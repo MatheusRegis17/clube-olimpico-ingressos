@@ -120,3 +120,20 @@ Observação: alterações feitas pelo Painel Master ficam salvas nos arquivos d
 ## Ajuste solicitado
 - a prévia do Painel Master agora mostra a coordenada/identificação de cada mesa em cima da mesa numerada
 - adicionado ajuste visual do tamanho da marcação das mesas no mapa
+
+
+## Correção final aplicada
+
+Principais correções:
+- o mapa agora usa a planta limpa enviada pelo usuário
+- as 100 mesas são desenhadas dinamicamente em cima da quadra
+- a página Mesas não mostra mais etiquetas verdes desalinhadas
+- o Painel Master mostra etiquetas verdes apenas no modo de edição
+- o fundo de Festa Junina foi mantido em `assets/background_festa_junina.png`
+- usuário `Adm` já vem com senha padrão `Cata1010#` para evitar travamento após redeploy
+- não existe entrada sem identificação
+
+Para testar senha:
+- Usuário: Adm
+- Senha: Cata1010#
+

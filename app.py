@@ -34,7 +34,7 @@ INGRESSOS_COLUMNS = ["comprador","telefone","quantidade","vendedor","pagamento",
 
 def default_config():
     return {
-        "background_opacity": 76,
+        "background_opacity": 58,
         "background_position": "center center",
         "background_blur": 0,
         "primary_color": "#2f6bff",
@@ -442,50 +442,82 @@ def load_table_coordinates():
     return []
 
 
-def generate_quadra_map(mesas, show_coord_labels=False):
-    if MAP_BACKGROUND_PATH.exists():
-        img = Image.open(MAP_BACKGROUND_PATH).convert('RGBA')
-    else:
-        img = Image.new('RGBA', (2000, 1414), (18, 33, 61, 255))
 
-    overlay = Image.new('RGBA', img.size, (0,0,0,0))
+def table_colors(status):
+    """Cores das mesas no mapa."""
+    return {
+        "Disponível": ("#d99a3a", "#8a5a16", "white"),
+        "Reservada": ("#ffb400", "#8a5a16", "black"),
+        "Vendida": ("#dc3f45", "#7f1d1d", "white"),
+        "Cancelada": ("#6b7280", "#374151", "white"),
+        "Gratuidade": ("#7c3aed", "#4c1d95", "white"),
+    }.get(status, ("#d99a3a", "#8a5a16", "white"))
+
+
+def generate_quadra_map(mesas, show_coord_labels=False):
+    """
+    Gera o mapa usando a planta limpa enviada pelo usuário.
+    As 100 mesas são desenhadas dinamicamente em cima da quadra.
+    """
+    if MAP_BACKGROUND_PATH.exists():
+        img = Image.open(MAP_BACKGROUND_PATH).convert("RGBA")
+    else:
+        img = Image.new("RGBA", (2000, 1414), (18, 33, 61, 255))
+
+    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
     coords = load_table_coordinates()
-    mesa_by_num = {int(m['mesa']): m for m in mesas if str(m.get('mesa','')).isdigit()}
+    mesa_by_num = {int(m["mesa"]): m for m in mesas if str(m.get("mesa", "")).isdigit()}
     cfg = load_config()
-    box_w = int(cfg.get('map_table_width', 32))
-    box_h = int(cfg.get('map_table_height', 20))
+
+    radius = int(cfg.get("map_table_radius", 22))
+    chair_size = max(5, int(radius * 0.34))
 
     for item in coords:
-        num = int(item['mesa'])
-        x = int(item['x'])
-        y = int(item['y'])
-        mesa = mesa_by_num.get(num, {'status': 'Disponível'})
-        color = status_color(mesa['status'])
+        num = int(item["mesa"])
+        x = int(item["x"])
+        y = int(item["y"])
+        mesa = mesa_by_num.get(num, {"status": "Disponível"})
+        status = mesa.get("status", "Disponível")
+        fill, outline, text_color = table_colors(status)
 
-        draw.rounded_rectangle((x-box_w//2, y-box_h//2, x+box_w//2, y+box_h//2), radius=5,
-                               fill=color, outline='white', width=2)
+        # cadeiras nos quatro lados
+        draw.rounded_rectangle((x-chair_size//2, y-radius-chair_size-3, x+chair_size//2, y-radius-3),
+                               radius=3, fill=outline, outline="white", width=1)
+        draw.rounded_rectangle((x-chair_size//2, y+radius+3, x+chair_size//2, y+radius+chair_size+3),
+                               radius=3, fill=outline, outline="white", width=1)
+        draw.rounded_rectangle((x-radius-chair_size-3, y-chair_size//2, x-radius-3, y+chair_size//2),
+                               radius=3, fill=outline, outline="white", width=1)
+        draw.rounded_rectangle((x+radius+3, y-chair_size//2, x+radius+chair_size+3, y+chair_size//2),
+                               radius=3, fill=outline, outline="white", width=1)
+
+        # mesa redonda
+        draw.ellipse((x-radius, y-radius, x+radius, y+radius), fill=fill, outline=outline, width=3)
+
+        # círculo branco central para o número
+        inner = int(radius * 0.62)
+        draw.ellipse((x-inner, y-inner, x+inner, y+inner), fill="white", outline=outline, width=2)
+
         label = str(num)
-        offset = 5 if len(label) == 1 else 9 if len(label) == 2 else 13
-        txt_color = 'black' if mesa['status'] == 'Reservada' else 'white'
-        draw.text((x-offset, y-7), label, fill=txt_color)
+        offset = 4 if len(label) == 1 else 8 if len(label) == 2 else 12
+        draw.text((x-offset, y-7), label, fill="#111827")
 
         if show_coord_labels:
-            coord_label = f"{num}"
-            chip_w = 14 + (9 * len(coord_label))
+            chip_label = str(num)
+            chip_w = 18 + (8 * len(chip_label))
             chip_h = 18
             chip_x1 = x - chip_w//2
-            chip_y1 = y - box_h//2 - chip_h - 4
+            chip_y1 = y - radius - chip_h - 8
             chip_x2 = x + chip_w//2
-            chip_y2 = y - box_h//2 - 4
-            draw.rounded_rectangle((chip_x1, chip_y1, chip_x2, chip_y2), radius=5,
-                                   fill='#22c55e', outline='white', width=2)
-            text_offset = 4 if len(coord_label) == 1 else 7 if len(coord_label) == 2 else 10
-            draw.text((x-text_offset, chip_y1+3), coord_label, fill='white')
+            chip_y2 = y - radius - 8
+            draw.rounded_rectangle((chip_x1, chip_y1, chip_x2, chip_y2), radius=6,
+                                   fill="#22c55e", outline="white", width=2)
+            chip_offset = 4 if len(chip_label) == 1 else 8 if len(chip_label) == 2 else 12
+            draw.text((x-chip_offset, chip_y1+3), chip_label, fill="white")
 
     img = Image.alpha_composite(img, overlay)
     bio = BytesIO()
-    img.save(bio, format='PNG')
+    img.save(bio, format="PNG")
     return bio.getvalue()
 
 def salvar_mesa(payload, gratuidade=False):
@@ -720,9 +752,9 @@ def page_dashboard():
 def page_mesas():
     mesas = st.session_state.mesas
     st.subheader('🪑 Controle de Mesas')
-    st.caption('Mapa baseado na imagem assets/mapa_mesas_base.png e nas coordenadas do arquivo assets/mesa_coords.json.')
+    st.caption('Mapa baseado na planta oficial da quadra. As mesas são desenhadas pelo sistema em cima da imagem.')
     st.markdown('<div class="map-card">', unsafe_allow_html=True)
-    st.image(generate_quadra_map(mesas, show_coord_labels=True), use_container_width=True)
+    st.image(generate_quadra_map(mesas), use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
     st.caption('Verde = disponível - Amarelo = reservada - Vermelho = vendida - Roxo = gratuidade - Cinza = cancelada')
     for inicio in range(0, 100, 10):
@@ -865,6 +897,12 @@ def page_master():
                 max_value=40,
                 value=int(cfg.get("map_table_height", 20))
             )
+            cfg["map_table_radius"] = st.slider(
+                "Tamanho das mesas no mapa",
+                min_value=14,
+                max_value=36,
+                value=int(cfg.get("map_table_radius", 22))
+            )
 
         with col2:
             cfg["background_position"] = st.selectbox(
@@ -930,7 +968,7 @@ def page_master():
     with aba3:
         st.markdown("### Prévia do mapa")
         mesas = load_mesas()
-        st.image(generate_quadra_map(mesas, show_coord_labels=True), use_container_width=True)
+        st.image(generate_quadra_map(mesas), use_container_width=True)
 
         col1, col2 = st.columns(2)
         with col1:

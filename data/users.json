@@ -7,13 +7,13 @@
       "password_hash": ""
     },
     "Adm": {
-      "password_hash": ""
+      "password_hash": "c4a4575f6b5c8ea90763c35c88c35af4ce36f4a115db3c35afa2f80267198748"
     },
     "Carla Curi": {
       "password_hash": ""
     }
   },
   "meta": {
-    "last_user": ""
+    "last_user": "Adm"
   }
 }
