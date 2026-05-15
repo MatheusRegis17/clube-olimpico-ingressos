@@ -115,3 +115,8 @@ Funções:
 - recriar o layout padrão de 100 mesas
 
 Observação: alterações feitas pelo Painel Master ficam salvas nos arquivos do app enquanto o ambiente Streamlit estiver ativo. Para persistência 100% profissional, o próximo passo é migrar esses arquivos/configurações para Google Drive/Sheets.
+
+
+## Ajuste solicitado
+- a prévia do Painel Master agora mostra a coordenada/identificação de cada mesa em cima da mesa numerada
+- adicionado ajuste visual do tamanho da marcação das mesas no mapa

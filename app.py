@@ -442,7 +442,7 @@ def load_table_coordinates():
     return []
 
 
-def generate_quadra_map(mesas):
+def generate_quadra_map(mesas, show_coord_labels=False):
     if MAP_BACKGROUND_PATH.exists():
         img = Image.open(MAP_BACKGROUND_PATH).convert('RGBA')
     else:
@@ -452,6 +452,9 @@ def generate_quadra_map(mesas):
     draw = ImageDraw.Draw(overlay)
     coords = load_table_coordinates()
     mesa_by_num = {int(m['mesa']): m for m in mesas if str(m.get('mesa','')).isdigit()}
+    cfg = load_config()
+    box_w = int(cfg.get('map_table_width', 32))
+    box_h = int(cfg.get('map_table_height', 20))
 
     for item in coords:
         num = int(item['mesa'])
@@ -460,13 +463,25 @@ def generate_quadra_map(mesas):
         mesa = mesa_by_num.get(num, {'status': 'Disponível'})
         color = status_color(mesa['status'])
 
-        box_w, box_h = 32, 20
         draw.rounded_rectangle((x-box_w//2, y-box_h//2, x+box_w//2, y+box_h//2), radius=5,
                                fill=color, outline='white', width=2)
         label = str(num)
         offset = 5 if len(label) == 1 else 9 if len(label) == 2 else 13
         txt_color = 'black' if mesa['status'] == 'Reservada' else 'white'
         draw.text((x-offset, y-7), label, fill=txt_color)
+
+        if show_coord_labels:
+            coord_label = f"{num}"
+            chip_w = 14 + (9 * len(coord_label))
+            chip_h = 18
+            chip_x1 = x - chip_w//2
+            chip_y1 = y - box_h//2 - chip_h - 4
+            chip_x2 = x + chip_w//2
+            chip_y2 = y - box_h//2 - 4
+            draw.rounded_rectangle((chip_x1, chip_y1, chip_x2, chip_y2), radius=5,
+                                   fill='#22c55e', outline='white', width=2)
+            text_offset = 4 if len(coord_label) == 1 else 7 if len(coord_label) == 2 else 10
+            draw.text((x-text_offset, chip_y1+3), coord_label, fill='white')
 
     img = Image.alpha_composite(img, overlay)
     bio = BytesIO()
@@ -707,7 +722,7 @@ def page_mesas():
     st.subheader('🪑 Controle de Mesas')
     st.caption('Mapa baseado na imagem assets/mapa_mesas_base.png e nas coordenadas do arquivo assets/mesa_coords.json.')
     st.markdown('<div class="map-card">', unsafe_allow_html=True)
-    st.image(generate_quadra_map(mesas), use_container_width=True)
+    st.image(generate_quadra_map(mesas, show_coord_labels=True), use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
     st.caption('Verde = disponível - Amarelo = reservada - Vermelho = vendida - Roxo = gratuidade - Cinza = cancelada')
     for inicio in range(0, 100, 10):
@@ -838,6 +853,18 @@ def page_master():
                 max_value=98,
                 value=int(cfg.get("card_opacity", 90))
             )
+            cfg["map_table_width"] = st.slider(
+                "Largura da marcação das mesas no mapa",
+                min_value=24,
+                max_value=60,
+                value=int(cfg.get("map_table_width", 32))
+            )
+            cfg["map_table_height"] = st.slider(
+                "Altura da marcação das mesas no mapa",
+                min_value=16,
+                max_value=40,
+                value=int(cfg.get("map_table_height", 20))
+            )
 
         with col2:
             cfg["background_position"] = st.selectbox(
@@ -903,7 +930,7 @@ def page_master():
     with aba3:
         st.markdown("### Prévia do mapa")
         mesas = load_mesas()
-        st.image(generate_quadra_map(mesas), use_container_width=True)
+        st.image(generate_quadra_map(mesas, show_coord_labels=True), use_container_width=True)
 
         col1, col2 = st.columns(2)
         with col1:
@@ -959,7 +986,7 @@ def page_master():
                 st.rerun()
 
             st.markdown("### Prévia atualizada")
-            st.image(generate_quadra_map(load_mesas()), use_container_width=True)
+            st.image(generate_quadra_map(load_mesas(), show_coord_labels=True), use_container_width=True)
 
 
 init_files()
