@@ -1,14 +1,7 @@
-{
-  "Secretaria Lucas": {
-    "password_hash": ""
-  },
-  "Secretaria Juliana": {
-    "password_hash": ""
-  },
-  "Adm": {
-    "password_hash": ""
-  },
-  "Carla Curi": {
-    "password_hash": ""
-  }
-}
+.streamlit/secrets.toml
+__pycache__/
+*.pyc
+.env
+venv/
+.venv/
+.DS_Store
