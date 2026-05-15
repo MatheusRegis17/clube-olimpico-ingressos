@@ -99,3 +99,19 @@ Main file path: `app.py`
 - 100 mesas distribuídas automaticamente no mapa
 - renderização das mesas com caixas numeradas mais legíveis
 - preview do mapa em assets/preview_mapa_100_mesas.png
+
+
+## Painel Master
+
+Entrando com o usuário `Adm`, aparece o menu `Painel Master`.
+
+Funções:
+- alterar fundo do sistema
+- alterar logo do clube
+- alterar logo do Arraiá
+- alterar imagem do mapa
+- ajustar posição das mesas
+- alterar opacidade, desfoque e posição do fundo
+- recriar o layout padrão de 100 mesas
+
+Observação: alterações feitas pelo Painel Master ficam salvas nos arquivos do app enquanto o ambiente Streamlit estiver ativo. Para persistência 100% profissional, o próximo passo é migrar esses arquivos/configurações para Google Drive/Sheets.
