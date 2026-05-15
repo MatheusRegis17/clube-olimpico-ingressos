@@ -1,19 +1,16 @@
 # Clube Olímpico Ingressos
 
-Pasta pronta para subir no GitHub.
+Versão pronta para subir no GitHub.
 
-## Arquivos
+## Melhorias desta versão
+- logos sem fundo
+- acesso lembrado automaticamente
+- botão para trocar de usuário
+- sem pasta assets
 
+## Estrutura
 - app.py
 - data/users.json
 
-As imagens estão embutidas no próprio app.py, então não precisa criar pasta assets.
-
 ## Streamlit
-
-Main file path:
-
-```text
-app.py
-```
-
+Main file path: `app.py`
