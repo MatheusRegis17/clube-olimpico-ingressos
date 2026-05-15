@@ -1,6 +1,7 @@
 import csv
 import hashlib
 import json
+import base64
 from datetime import datetime
 from pathlib import Path
 from io import BytesIO
@@ -35,7 +36,7 @@ INGRESSOS_COLUMNS = ["comprador","telefone","quantidade","vendedor","pagamento",
 
 def default_config():
     return {
-        "background_opacity": 38,
+        "background_opacity": 30,
         "background_position": "center center",
         "background_blur": 0,
         "primary_color": "#2f6bff",
@@ -69,35 +70,50 @@ def image_data_uri(path):
     path = Path(path)
     if not path.exists():
         return ""
-    try:
-        suffix = path.suffix.lower()
-        mime = "image/png"
-        if suffix in [".jpg", ".jpeg"]:
-            mime = "image/jpeg"
-        elif suffix == ".webp":
-            mime = "image/webp"
-        data = base64.b64encode(path.read_bytes()).decode("ascii")
-        return f"data:{mime};base64,{data}"
-    except Exception:
-        return ""
+    suffix = path.suffix.lower()
+    mime = "image/png"
+    if suffix in [".jpg", ".jpeg"]:
+        mime = "image/jpeg"
+    elif suffix == ".webp":
+        mime = "image/webp"
+    data = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime};base64,{data}"
 
 
 def inject_background():
-    """Aplica a imagem de fundo usando uma tag <img> fixa atrás do app."""
+    """Aplica o fundo de forma robusta no Streamlit Cloud."""
     cfg = load_config()
     bg_uri_local = image_data_uri(BACKGROUND_PATH)
     if not bg_uri_local:
+        st.warning("Imagem de fundo não encontrada em assets/background_festa_junina.png")
         return
 
-    opacity = max(0, min(95, int(cfg.get("background_opacity", 38)))) / 100
+    opacity = max(0, min(95, int(cfg.get("background_opacity", 30)))) / 100
     blur = max(0, min(20, int(cfg.get("background_blur", 0))))
     position = cfg.get("background_position", "center center")
 
-    # CSS object-position usa a mesma sintaxe do background-position.
-    # A imagem fica atrás de todo o app, com pointer-events none.
     st.markdown(
         f"""
         <style>
+        html, body, .stApp, [data-testid="stAppViewContainer"] {{
+            background-color: #07111f !important;
+            background-image:
+                linear-gradient(rgba(4,10,20,{opacity}), rgba(4,10,20,{min(0.86, opacity + 0.08)})),
+                url("{bg_uri_local}") !important;
+            background-size: cover !important;
+            background-position: {position} !important;
+            background-repeat: no-repeat !important;
+            background-attachment: fixed !important;
+        }}
+
+        [data-testid="stAppViewContainer"] > .main {{
+            background: transparent !important;
+        }}
+
+        [data-testid="stHeader"] {{
+            background: transparent !important;
+        }}
+
         .coj-fixed-bg {{
             position: fixed;
             inset: 0;
@@ -105,47 +121,18 @@ def inject_background():
             height: 100vh;
             object-fit: cover;
             object-position: {position};
-            z-index: 0;
+            z-index: -1;
             pointer-events: none;
             filter: blur({blur}px);
             transform: scale(1.02);
         }}
-        .coj-bg-overlay {{
-            position: fixed;
-            inset: 0;
-            z-index: 0;
-            pointer-events: none;
-            background:
-                linear-gradient(
-                    rgba(4,10,20,{opacity}),
-                    rgba(4,10,20,{min(0.88, opacity + 0.10)})
-                );
-        }}
 
-        [data-testid="stAppViewContainer"],
-        .stApp {{
-            background: transparent !important;
-        }}
-
-        [data-testid="stAppViewContainer"] > .main,
         .block-container {{
             position: relative;
             z-index: 2;
         }}
-
-        [data-testid="stHeader"] {{
-            background: transparent !important;
-            z-index: 3;
-        }}
-
-        section[data-testid="stSidebar"] {{
-            position: relative;
-            z-index: 4;
-        }}
         </style>
-
         <img class="coj-fixed-bg" src="{bg_uri_local}" />
-        <div class="coj-bg-overlay"></div>
         """,
         unsafe_allow_html=True,
     )
@@ -153,7 +140,7 @@ def inject_background():
 
 config = load_config()
 bg_uri = image_data_uri(BACKGROUND_PATH)
-bg_alpha = max(0, min(95, int(config.get("background_opacity", 38)))) / 100
+bg_alpha = max(0, min(95, int(config.get("background_opacity", 30)))) / 100
 bg_blur = max(0, min(20, int(config.get("background_blur", 0))))
 primary_color = config.get("primary_color", "#2f6bff")
 card_alpha = max(20, min(98, int(config.get("card_opacity", 90)))) / 100
@@ -388,6 +375,45 @@ inject_background()
 def show_image(path, width=None):
     if Path(path).exists():
         st.image(str(path), width=width)
+
+
+def image_bytes_to_data_uri(image_bytes):
+    data = base64.b64encode(image_bytes).decode("ascii")
+    return f"data:image/png;base64,{data}"
+
+
+def show_zoomable_image(image_bytes, zoom_percent=100, height=None):
+    """
+    Exibe uma imagem com zoom e rolagem.
+    zoom_percent acima de 100 aumenta o mapa sem perder a posição.
+    """
+    zoom_percent = int(zoom_percent)
+    zoom_percent = max(50, min(300, zoom_percent))
+    data_uri = image_bytes_to_data_uri(image_bytes)
+    height_css = f"height:{height}px;" if height else "max-height:78vh;"
+    st.markdown(
+        f"""
+        <div style="
+            width:100%;
+            {height_css}
+            overflow:auto;
+            border-radius:18px;
+            border:1px solid rgba(255,255,255,0.14);
+            background:rgba(0,0,0,0.28);
+            padding:10px;
+        ">
+            <img src="{data_uri}" style="
+                width:{zoom_percent}%;
+                max-width:none;
+                height:auto;
+                display:block;
+                margin:0 auto;
+                border-radius:12px;
+            " />
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def hash_password(password):
@@ -820,8 +846,16 @@ def page_mesas():
     mesas = st.session_state.mesas
     st.subheader('🪑 Controle de Mesas')
     st.caption('Mapa baseado na planta oficial da quadra. As mesas são desenhadas pelo sistema em cima da imagem.')
+    cfg = load_config()
+    zoom_mapa = st.slider(
+        "Zoom do mapa (%)",
+        min_value=50,
+        max_value=300,
+        value=int(cfg.get("map_zoom", 100)),
+        key="zoom_mapa_mesas"
+    )
     st.markdown('<div class="map-card">', unsafe_allow_html=True)
-    st.image(generate_quadra_map(mesas), use_container_width=True)
+    show_zoomable_image(generate_quadra_map(mesas), zoom_percent=zoom_mapa)
     st.markdown('</div>', unsafe_allow_html=True)
     st.caption('Verde = disponível - Amarelo = reservada - Vermelho = vendida - Roxo = gratuidade - Cinza = cancelada')
     for inicio in range(0, 100, 10):
@@ -1002,6 +1036,13 @@ def page_master():
                 max_value=36,
                 value=int(cfg.get("map_table_radius", 22))
             )
+            cfg["map_zoom"] = st.slider(
+                "Zoom padrão do mapa (%)",
+                min_value=50,
+                max_value=300,
+                value=int(cfg.get("map_zoom", 100)),
+                help="Controla o tamanho inicial do mapa nas telas de Mesas e Painel Master."
+            )
 
         with col2:
             cfg["background_position"] = st.selectbox(
@@ -1022,6 +1063,7 @@ def page_master():
 
     with aba2:
         st.markdown("### Trocar imagens")
+        st.caption(f"Status do fundo: {'carregado' if BACKGROUND_PATH.exists() else 'não encontrado'} • Arquivo: assets/background_festa_junina.png")
         st.info("Envie arquivos PNG/JPG. O sistema salva com o nome correto automaticamente.")
 
         col1, col2 = st.columns(2)
@@ -1068,7 +1110,8 @@ def page_master():
     with aba3:
         st.markdown("### Prévia do mapa")
         mesas = load_mesas()
-        st.image(generate_quadra_map(mesas), use_container_width=True)
+        zoom_prev = st.slider("Zoom da prévia (%)", 50, 300, int(cfg.get("map_zoom", 100)), key="zoom_preview_master_mapa")
+        show_zoomable_image(generate_quadra_map(mesas), zoom_percent=zoom_prev)
 
         col1, col2 = st.columns(2)
         with col1:
@@ -1091,6 +1134,14 @@ def page_master():
             "Escolha a mesa e clique no ponto desejado do mapa. "
             "A prévia foi reduzida para ficar mais rápida, mas o sistema salva na coordenada correta do mapa original."
         )
+        tamanho_click = st.slider(
+            "Tamanho da imagem clicável",
+            min_value=700,
+            max_value=1400,
+            value=1050,
+            step=50,
+            help="Aumente para enxergar melhor. Diminua se ficar lento."
+        )
 
         coords = load_table_coordinates()
         if not coords:
@@ -1109,7 +1160,7 @@ def page_master():
                 passo = st.number_input("Passo dos botões", value=10, min_value=1, max_value=100)
 
             st.markdown("#### Clique no mapa para mover a mesa selecionada")
-            preview_img, scale_x, scale_y = map_preview_with_selected(load_mesas(), mesa_sel)
+            preview_img, scale_x, scale_y = map_preview_with_selected(load_mesas(), mesa_sel, max_width=tamanho_click)
             click = streamlit_image_coordinates(
                 preview_img,
                 key=f"map_click_{mesa_sel}",

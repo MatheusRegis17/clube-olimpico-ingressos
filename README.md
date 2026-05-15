@@ -137,3 +137,11 @@ Para testar senha:
 - Usuário: Adm
 - Senha: Cata1010#
 
+
+
+## Atualização: Zoom no mapa
+
+- A página `Mesas` agora tem controle de `Zoom do mapa (%)`.
+- O `Painel Master > Aparência` agora tem `Zoom padrão do mapa (%)`.
+- As prévias do Painel Master também têm controle de zoom.
+- Na tela de posicionamento com clique, existe `Tamanho da imagem clicável` para equilibrar visão e velocidade.
