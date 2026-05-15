@@ -91,3 +91,11 @@ Main file path: `app.py`
 - Se o usuário ainda não tiver senha, ele precisa cadastrar senha para entrar.
 - Removida a opção de entrar sem senha.
 - Mapa das mesas trocado para `assets/mapa_mesas_base.png`.
+
+
+## Fundo e mapa atualizados
+- fundo principal com arte de festa junina
+- mapa base trocado pela nova planta da quadra
+- 100 mesas distribuídas automaticamente no mapa
+- renderização das mesas com caixas numeradas mais legíveis
+- preview do mapa em assets/preview_mapa_100_mesas.png
