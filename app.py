@@ -32,107 +32,173 @@ INGRESSOS_COLUMNS = ["comprador","telefone","quantidade","vendedor","pagamento",
 st.markdown("""
 <style>
 .stApp {
-    background: linear-gradient(180deg, #0b1630 0%, #07111f 100%);
+    background: #f0f2f5;
 }
-.block-container {
-    padding-top: 1.2rem;
-    padding-bottom: 2rem;
-    max-width: 1200px;
-}
-.hero, .glass-card, .event-card, .map-card {
-    background: linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
-    border: 1px solid rgba(255,255,255,0.09);
-    box-shadow: 0 18px 42px rgba(0,0,0,0.24);
-}
-.hero { border-radius: 24px; padding: 18px 22px; margin-bottom: 18px; }
-.title {font-size: 35px; font-weight: 900; color: white; margin: 0;}
-.subtitle {font-size: 15px; color: #d8e4ff; margin-top: 4px;}
-.glass-card {border-radius: 18px; padding: 16px; margin-bottom: 12px;}
-.event-card {border-radius: 18px; padding: 14px; margin-bottom: 16px;}
-.map-card {border-radius: 22px; padding: 14px; margin-top: 12px;}
-.small-note {font-size: 13px; color: #b9c4de;}
 
-.fb-login-shell {
-    max-width: 980px;
-    margin: 40px auto 0 auto;
+/* remove big top padding */
+.block-container {
+    padding-top: 2.4rem;
+    padding-bottom: 2rem;
+    max-width: 1180px;
 }
-.fb-title {
-    text-align: center;
-    color: #1877f2;
-    font-size: 50px;
+
+[data-testid="stHeader"] {
+    background: transparent;
+}
+
+.hero, .glass-card, .event-card, .map-card {
+    background: #ffffff;
+    border: 1px solid #dddfe2;
+    border-radius: 14px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.hero {
+    padding: 18px 22px;
+    margin-bottom: 18px;
+}
+
+.title {
+    font-size: 34px;
     font-weight: 800;
-    letter-spacing: -0.02em;
-    line-height: 1.05;
-    margin: 8px 0 8px 0;
+    color: #1c1e21;
+    margin: 0;
 }
-.fb-subtitle {
-    text-align: center;
-    color: #e5e7eb;
-    font-size: 19px;
-    max-width: 560px;
-    margin: 0 auto 24px auto;
-    line-height: 1.35;
+
+.subtitle {
+    font-size: 15px;
+    color: #606770;
+    margin-top: 4px;
 }
-.fb-logo-wrap {
-    display: flex;
-    justify-content: center;
+
+.glass-card {
+    padding: 16px;
     margin-bottom: 12px;
 }
-.fb-card {
-    background: #ffffff;
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 12px 28px rgba(0,0,0,.28), 0 2px 4px rgba(0,0,0,.16);
-    max-width: 430px;
-    margin: 0 auto;
+
+.event-card {
+    padding: 14px;
+    margin-bottom: 16px;
 }
-.fb-card-note {
-    text-align: center;
-    color: #65676b;
-    font-size: 14px;
+
+.map-card {
+    padding: 14px;
+    margin-top: 12px;
+}
+
+.small-note {
+    font-size: 13px;
+    color: #606770;
+}
+
+/* Login inspirado no Facebook */
+.login-page {
+    margin-top: 6vh;
+}
+
+.login-brand-title {
+    color: #1877f2;
+    font-size: 54px;
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    line-height: 1.05;
     margin-bottom: 10px;
 }
-/* Login widgets */
-div[data-testid="stSelectbox"], div[data-testid="stTextInput"], div[data-testid="stButton"], div[data-testid="stForm"], div[data-testid="stAlert"], div[data-testid="stExpander"] {
-    max-width: 430px;
-    margin-left: auto;
-    margin-right: auto;
+
+.login-brand-subtitle {
+    color: #1c1e21;
+    font-size: 24px;
+    line-height: 1.25;
+    max-width: 520px;
 }
-div[data-testid="stSelectbox"] label, div[data-testid="stTextInput"] label, div[data-testid="stExpander"] summary, div[data-testid="stAlert"] * {
+
+.login-event {
+    color: #606770;
+    font-size: 15px;
+    margin-top: 12px;
+}
+
+div[data-testid="stForm"] {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 18px 18px 20px 18px;
+    box-shadow: 0 2px 4px rgba(0,0,0,.10), 0 8px 20px rgba(0,0,0,.10);
+    border: 1px solid #dddfe2;
+}
+
+div[data-testid="stVerticalBlockBorderWrapper"] {
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 2px 4px rgba(0,0,0,.10), 0 8px 20px rgba(0,0,0,.10);
+}
+
+.login-card-note {
+    text-align: center;
+    color: #606770;
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+
+/* Inputs */
+div[data-testid="stSelectbox"] label,
+div[data-testid="stTextInput"] label {
     color: #1c1e21 !important;
+    font-weight: 600;
 }
-section[data-testid="stSidebar"] * { color: inherit; }
-div[data-baseweb="select"] > div, div[data-testid="stTextInput"] input {
+
+div[data-baseweb="select"] > div,
+div[data-testid="stTextInput"] input {
     background: #ffffff !important;
     color: #1c1e21 !important;
     border: 1px solid #dddfe2 !important;
     border-radius: 8px !important;
     min-height: 52px !important;
+    font-size: 16px !important;
 }
+
 div[data-testid="stTextInput"] input::placeholder {
     color: #8a8d91 !important;
 }
-.stButton > button {
-    border-radius: 8px !important;
-    font-weight: 700 !important;
-    min-height: 48px !important;
-}
-button[kind="primary"] {
-    background: #1877f2 !important;
-    color: #ffffff !important;
-    border: none !important;
-}
-/* fallback for form buttons */
+
+/* Buttons */
 div[data-testid="stFormSubmitButton"] button {
     background: #1877f2 !important;
     color: #ffffff !important;
     border: none !important;
+    border-radius: 8px !important;
+    min-height: 48px !important;
+    font-size: 17px !important;
+    font-weight: 700 !important;
 }
-.fb-secondary button, .stButton > button {
-    border: 1px solid #ccd0d5;
+
+.stButton > button {
+    border-radius: 8px !important;
+    min-height: 44px !important;
+    font-weight: 700 !important;
+    border: 1px solid #ccd0d5 !important;
+    background: #ffffff !important;
+    color: #1877f2 !important;
 }
+
+/* Sidebar remains dark enough when app is logged */
+section[data-testid="stSidebar"] {
+    background: #ffffff;
+}
+
+section[data-testid="stSidebar"] * {
+    color: #1c1e21;
+}
+
+/* Mesa cards */
 .mesa-box {
-    border-radius: 12px; padding: 10px 6px; text-align: center; font-weight: 800; font-size: 13px; margin-bottom: 8px; border: 1px solid rgba(255,255,255,0.10); box-shadow: 0 6px 14px rgba(0,0,0,0.16);
+    border-radius: 12px;
+    padding: 10px 6px;
+    text-align: center;
+    font-weight: 800;
+    font-size: 13px;
+    margin-bottom: 8px;
+    border: 1px solid rgba(0,0,0,0.10);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.12);
 }
 .mesa-disponivel { background: linear-gradient(180deg, #1ea35a, #177c45); color: white; }
 .mesa-reservada { background: linear-gradient(180deg, #f5b301, #d99200); color: #1a1a1a; }
@@ -356,6 +422,7 @@ def init_session():
 
 
 
+
 def login_screen():
     auth = load_auth_data()
     users = auth['users']
@@ -363,107 +430,132 @@ def login_screen():
     user_list = list(users.keys())
     default_user = last_user if last_user in user_list else user_list[0]
 
-    st.markdown('<div class="fb-login-shell">', unsafe_allow_html=True)
-    st.markdown('<div class="fb-logo-wrap">', unsafe_allow_html=True)
-    show_image(LOGO_CLUBE_PATH, width=120)
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('<div class="fb-title">Clube Olímpico Ingressos</div>', unsafe_allow_html=True)
-    st.markdown('<div class="fb-subtitle">Controle de mesas e ingressos da Festa Junina 2026. Acesse sua conta para continuar.</div>', unsafe_allow_html=True)
-    st.markdown('<div class="fb-card">', unsafe_allow_html=True)
+    st.markdown('<div class="login-page">', unsafe_allow_html=True)
 
-    if last_user and not st.session_state.force_switch_user:
-        usuario = last_user
-        st.markdown('<div class="fb-card-note">Entrando como <strong>' + usuario + '</strong></div>', unsafe_allow_html=True)
+    left_col, right_col = st.columns([1.25, 0.95], gap="large")
 
-        tem_senha = bool(users[usuario].get('password_hash',''))
-        if tem_senha:
-            with st.form('login_direto'):
-                senha = st.text_input('Senha', type='password', placeholder='Digite sua senha')
-                entrar = st.form_submit_button('Entrar', use_container_width=True)
-            if entrar:
-                if hash_password(senha) == users[usuario]['password_hash']:
+    with left_col:
+        show_image(LOGO_CLUBE_PATH, width=128)
+        st.markdown('<div class="login-brand-title">Clube Olímpico<br>Ingressos</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="login-brand-subtitle">'
+            'Controle de mesas e ingressos da Festa Junina do Clube Olímpico de Jacarepaguá.'
+            '</div>',
+            unsafe_allow_html=True
+        )
+        st.markdown('<div class="login-event">Evento ativo: Festa Junina 2026</div>', unsafe_allow_html=True)
+
+    with right_col:
+        if last_user and not st.session_state.force_switch_user:
+            usuario = last_user
+            tem_senha = bool(users[usuario].get('password_hash',''))
+
+            if tem_senha:
+                with st.form('login_direto'):
+                    st.markdown('<div class="login-card-note">Entrando como <strong>' + usuario + '</strong></div>', unsafe_allow_html=True)
+                    senha = st.text_input('Senha', type='password', placeholder='Digite sua senha')
+                    entrar = st.form_submit_button('Entrar', use_container_width=True)
+
+                if entrar:
+                    if hash_password(senha) == users[usuario]['password_hash']:
+                        st.session_state.logged_in = True
+                        st.session_state.current_user = usuario
+                        auth['meta']['last_user'] = usuario
+                        save_auth_data(auth)
+                        st.rerun()
+                    else:
+                        st.error('Senha incorreta.')
+
+                if st.button('Entrar com outro usuário', use_container_width=True):
+                    st.session_state.force_switch_user = True
+                    st.rerun()
+
+            else:
+                with st.form('login_sem_senha'):
+                    st.markdown('<div class="login-card-note">Entrando como <strong>' + usuario + '</strong></div>', unsafe_allow_html=True)
+                    st.warning('Esse usuário está sem senha salva neste servidor.')
+                    entrar = st.form_submit_button('Entrar direto sem senha', use_container_width=True)
+
+                if entrar:
                     st.session_state.logged_in = True
                     st.session_state.current_user = usuario
                     auth['meta']['last_user'] = usuario
                     save_auth_data(auth)
                     st.rerun()
-                else:
-                    st.error('Senha incorreta.')
+
+                if st.button('Entrar com outro usuário', use_container_width=True):
+                    st.session_state.force_switch_user = True
+                    st.rerun()
+
+                with st.expander('Criar ou redefinir senha'):
+                    with st.form('criar_senha_direto'):
+                        senha_1 = st.text_input('Crie uma senha', type='password')
+                        senha_2 = st.text_input('Repita a senha', type='password')
+                        criar = st.form_submit_button('Salvar senha', use_container_width=True)
+                    if criar:
+                        if len(senha_1) < 4:
+                            st.error('A senha precisa ter pelo menos 4 caracteres.')
+                        elif senha_1 != senha_2:
+                            st.error('As senhas não coincidem.')
+                        else:
+                            users[usuario]['password_hash'] = hash_password(senha_1)
+                            auth['meta']['last_user'] = usuario
+                            save_auth_data(auth)
+                            st.success('Senha salva. Agora você pode entrar.')
+                            st.rerun()
+
         else:
-            st.warning('Esse usuário está sem senha salva neste servidor.')
-            if st.button('Entrar direto sem senha', use_container_width=True):
-                st.session_state.logged_in = True
-                st.session_state.current_user = usuario
-                auth['meta']['last_user'] = usuario
-                save_auth_data(auth)
-                st.rerun()
-            with st.expander('Criar ou redefinir senha'):
-                with st.form('criar_senha_direto'):
-                    senha_1 = st.text_input('Crie uma senha', type='password')
-                    senha_2 = st.text_input('Repita a senha', type='password')
-                    criar = st.form_submit_button('Salvar senha', use_container_width=True)
-                if criar:
-                    if len(senha_1) < 4:
-                        st.error('A senha precisa ter pelo menos 4 caracteres.')
-                    elif senha_1 != senha_2:
-                        st.error('As senhas não coincidem.')
-                    else:
-                        users[usuario]['password_hash'] = hash_password(senha_1)
+            idx = user_list.index(default_user) if default_user in user_list else 0
+
+            # Select outside form so it updates immediately
+            usuario = st.selectbox('Selecione seu acesso', user_list, index=idx)
+            tem_senha = bool(users[usuario].get('password_hash',''))
+
+            if tem_senha:
+                with st.form('login_escolhido'):
+                    senha = st.text_input('Senha', type='password', placeholder='Digite sua senha')
+                    entrar = st.form_submit_button('Entrar', use_container_width=True)
+
+                if entrar:
+                    if hash_password(senha) == users[usuario]['password_hash']:
+                        st.session_state.logged_in = True
+                        st.session_state.current_user = usuario
                         auth['meta']['last_user'] = usuario
                         save_auth_data(auth)
-                        st.success('Senha salva. Agora você pode entrar.')
+                        st.session_state.force_switch_user = False
                         st.rerun()
+                    else:
+                        st.error('Senha incorreta.')
+            else:
+                with st.form('login_sem_senha_escolhido'):
+                    st.warning('Esse usuário está sem senha salva neste servidor.')
+                    entrar = st.form_submit_button('Entrar direto sem senha', use_container_width=True)
 
-        if st.button('Entrar com outro usuário', use_container_width=True):
-            st.session_state.force_switch_user = True
-            st.rerun()
-
-    else:
-        idx = user_list.index(default_user) if default_user in user_list else 0
-        usuario = st.selectbox('Selecione seu acesso', user_list, index=idx)
-        tem_senha = bool(users[usuario].get('password_hash',''))
-
-        if tem_senha:
-            with st.form('login_escolhido'):
-                senha = st.text_input('Senha', type='password', placeholder='Digite sua senha')
-                entrar = st.form_submit_button('Entrar', use_container_width=True)
-            if entrar:
-                if hash_password(senha) == users[usuario]['password_hash']:
+                if entrar:
                     st.session_state.logged_in = True
                     st.session_state.current_user = usuario
                     auth['meta']['last_user'] = usuario
                     save_auth_data(auth)
                     st.session_state.force_switch_user = False
                     st.rerun()
-                else:
-                    st.error('Senha incorreta.')
-        else:
-            st.warning('Esse usuário está sem senha salva neste servidor.')
-            if st.button('Entrar direto sem senha', use_container_width=True):
-                st.session_state.logged_in = True
-                st.session_state.current_user = usuario
-                auth['meta']['last_user'] = usuario
-                save_auth_data(auth)
-                st.session_state.force_switch_user = False
-                st.rerun()
-            with st.expander('Criar ou redefinir senha'):
-                with st.form('criar_senha'):
-                    senha_1 = st.text_input('Crie uma senha', type='password')
-                    senha_2 = st.text_input('Repita a senha', type='password')
-                    criar = st.form_submit_button('Salvar senha', use_container_width=True)
-                if criar:
-                    if len(senha_1) < 4:
-                        st.error('A senha precisa ter pelo menos 4 caracteres.')
-                    elif senha_1 != senha_2:
-                        st.error('As senhas não coincidem.')
-                    else:
-                        users[usuario]['password_hash'] = hash_password(senha_1)
-                        auth['meta']['last_user'] = usuario
-                        save_auth_data(auth)
-                        st.success('Senha salva. Agora você pode entrar.')
-                        st.rerun()
 
-    st.markdown('</div>', unsafe_allow_html=True)
+                with st.expander('Criar ou redefinir senha'):
+                    with st.form('criar_senha'):
+                        senha_1 = st.text_input('Crie uma senha', type='password')
+                        senha_2 = st.text_input('Repita a senha', type='password')
+                        criar = st.form_submit_button('Salvar senha', use_container_width=True)
+                    if criar:
+                        if len(senha_1) < 4:
+                            st.error('A senha precisa ter pelo menos 4 caracteres.')
+                        elif senha_1 != senha_2:
+                            st.error('As senhas não coincidem.')
+                        else:
+                            users[usuario]['password_hash'] = hash_password(senha_1)
+                            auth['meta']['last_user'] = usuario
+                            save_auth_data(auth)
+                            st.success('Senha salva. Agora você pode entrar.')
+                            st.rerun()
+
     st.markdown('</div>', unsafe_allow_html=True)
 
 def sidebar():

@@ -61,3 +61,11 @@ Main file path: `app.py`
 - card branco central
 - botão azul
 - visual inspirado em login limpo do Facebook
+
+
+## Login estilo Facebook limpo
+- fundo claro
+- duas colunas
+- card branco
+- botão azul
+- logo em formato escudo
