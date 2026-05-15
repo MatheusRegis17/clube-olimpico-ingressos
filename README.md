@@ -55,3 +55,9 @@ Main file path: `app.py`
 - elementos internos centralizados
 - logo maior
 - visual mais estilizado
+
+
+## Estilo Facebook na entrada
+- card branco central
+- botão azul
+- visual inspirado em login limpo do Facebook
