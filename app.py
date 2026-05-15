@@ -7,6 +7,7 @@ from pathlib import Path
 from io import BytesIO
 
 import streamlit as st
+from streamlit_drawable_canvas import st_canvas
 from streamlit_image_coordinates import streamlit_image_coordinates
 from PIL import Image, ImageDraw
 
@@ -131,7 +132,84 @@ def inject_background():
             position: relative;
             z-index: 2;
         }}
-        </style>
+        
+/* ===== Camadas de leitura sobre o fundo ===== */
+.block-container {
+    background: linear-gradient(135deg, rgba(3, 8, 20, 0.56), rgba(9, 19, 38, 0.42)) !important;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 28px;
+    box-shadow: 0 24px 70px rgba(0,0,0,0.34);
+    backdrop-filter: blur(8px);
+    margin-top: 14px;
+}
+
+.hero, .glass-card, .event-card, .map-card {
+    background: linear-gradient(135deg, rgba(7, 13, 28, 0.94), rgba(13, 27, 54, 0.90)) !important;
+    border: 1px solid rgba(255,255,255,0.18) !important;
+    box-shadow: 0 18px 46px rgba(0,0,0,0.42) !important;
+    backdrop-filter: blur(14px) !important;
+}
+
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, rgba(4, 10, 20, 0.94), rgba(7, 17, 31, 0.96)) !important;
+    border-right: 1px solid rgba(255,255,255,0.12);
+    backdrop-filter: blur(14px);
+}
+
+[data-testid="stMetric"] {
+    background: linear-gradient(135deg, rgba(7, 13, 28, 0.84), rgba(13, 27, 54, 0.74));
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 18px;
+    padding: 16px 18px;
+    box-shadow: 0 14px 32px rgba(0,0,0,0.26);
+    backdrop-filter: blur(10px);
+}
+
+[data-testid="stMetricLabel"] p {
+    color: #e5efff !important;
+    font-weight: 750 !important;
+}
+
+[data-testid="stMetricValue"] {
+    color: #ffffff !important;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.45);
+}
+
+[data-testid="stRadio"] {
+    background: rgba(5, 12, 25, 0.58);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 16px;
+    padding: 10px 14px;
+    backdrop-filter: blur(8px);
+}
+
+div[data-testid="stTabs"] button {
+    color: #ffffff !important;
+}
+
+div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+    background: rgba(5, 12, 25, 0.48);
+    border-radius: 14px;
+    padding: 6px;
+}
+
+div[data-testid="stAlert"] {
+    border-radius: 16px !important;
+    backdrop-filter: blur(8px);
+}
+
+h1, h2, h3, h4, h5, h6, p, label, span {
+    text-shadow: 0 1px 8px rgba(0,0,0,0.20);
+}
+
+[data-testid="stDataFrame"] {
+    background: rgba(7, 13, 28, 0.88);
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.14);
+    overflow: hidden;
+}
+
+</style>
         <img class="coj-fixed-bg" src="{bg_uri_local}" />
         """,
         unsafe_allow_html=True,
@@ -986,13 +1064,157 @@ def map_preview_with_selected(mesas, selected_mesa=None, max_width=1050):
     return img, 1.0, 1.0
 
 
+
+def build_canvas_editor_background(mesas, selected_set=None, max_width=1100):
+    """
+    Cria uma imagem leve para o editor visual:
+    - fundo = mapa base
+    - mesas desenhadas como objetos arrastáveis pelo canvas
+    Retorna: data_uri, canvas_w, canvas_h, scale_x, scale_y, objects
+    """
+    selected_set = selected_set or set()
+
+    if MAP_BACKGROUND_PATH.exists():
+        base = Image.open(MAP_BACKGROUND_PATH).convert("RGBA")
+    else:
+        base = Image.new("RGBA", (2000, 1414), (18, 33, 61, 255))
+
+    original_w, original_h = base.size
+    if original_w > max_width:
+        canvas_w = max_width
+        canvas_h = int(original_h * (canvas_w / original_w))
+        scale_x = original_w / canvas_w
+        scale_y = original_h / canvas_h
+        base_small = base.resize((canvas_w, canvas_h))
+    else:
+        canvas_w, canvas_h = original_w, original_h
+        scale_x = 1.0
+        scale_y = 1.0
+        base_small = base
+
+    # fundo com menos brilho para destacar mesas
+    dim = Image.new("RGBA", base_small.size, (0, 0, 0, 40))
+    base_small = Image.alpha_composite(base_small, dim)
+
+    bio = BytesIO()
+    base_small.save(bio, format="PNG")
+    data_uri = "data:image/png;base64," + base64.b64encode(bio.getvalue()).decode("ascii")
+
+    coords = load_table_coordinates()
+    mesas_status = {int(m["mesa"]): m.get("status", "Disponível") for m in mesas if str(m.get("mesa", "")).isdigit()}
+    cfg = load_config()
+    radius = int(cfg.get("map_table_radius", 22))
+
+    objects = []
+    for item in coords:
+        num = int(item["mesa"])
+        x = int(item["x"]) / scale_x
+        y = int(item["y"]) / scale_y
+        status = mesas_status.get(num, "Disponível")
+        fill, outline, _ = table_colors(status)
+        selected = num in selected_set
+
+        circle_radius = max(10, int(radius / scale_x))
+        objects.append({
+            "type": "circle",
+            "left": x - circle_radius,
+            "top": y - circle_radius,
+            "radius": circle_radius,
+            "fill": "#fff3d7" if not selected else "#fff200",
+            "stroke": "#111827" if not selected else "#ff0000",
+            "strokeWidth": 2 if not selected else 4,
+            "mesa_num": num,
+            "selectable": True,
+            "hasControls": True,
+            "hasBorders": True,
+            "lockScalingX": True,
+            "lockScalingY": True,
+            "lockRotation": True,
+        })
+        objects.append({
+            "type": "text",
+            "left": x - (6 if num < 10 else 10 if num < 100 else 14),
+            "top": y - 9,
+            "text": str(num),
+            "fontSize": 16,
+            "fontWeight": "bold",
+            "fill": "#111827",
+            "mesa_num": num,
+            "selectable": False,
+            "evented": False,
+        })
+
+    return data_uri, canvas_w, canvas_h, scale_x, scale_y, objects
+
+
+def save_canvas_positions(canvas_json, scale_x, scale_y):
+    """
+    Salva posições de todas as mesas movimentadas no canvas.
+    A posição é calculada pelo centro do círculo.
+    """
+    if not canvas_json or "objects" not in canvas_json:
+        return 0
+
+    coords = load_table_coordinates()
+    coords_by_num = {int(item["mesa"]): item for item in coords}
+    moved = 0
+
+    for obj in canvas_json.get("objects", []):
+        if obj.get("type") != "circle":
+            continue
+        num = obj.get("mesa_num")
+        if num is None:
+            continue
+
+        try:
+            num = int(num)
+            radius = float(obj.get("radius", 0))
+            left = float(obj.get("left", 0))
+            top = float(obj.get("top", 0))
+            center_x_canvas = left + radius
+            center_y_canvas = top + radius
+            new_x = int(round(center_x_canvas * scale_x))
+            new_y = int(round(center_y_canvas * scale_y))
+        except Exception:
+            continue
+
+        if num in coords_by_num:
+            old_x = int(coords_by_num[num]["x"])
+            old_y = int(coords_by_num[num]["y"])
+            if old_x != new_x or old_y != new_y:
+                coords_by_num[num]["x"] = new_x
+                coords_by_num[num]["y"] = new_y
+                moved += 1
+
+    coords_sorted = sorted(coords_by_num.values(), key=lambda x: int(x["mesa"]))
+    MAP_COORDS_PATH.write_text(json.dumps(coords_sorted, ensure_ascii=False, indent=2), encoding="utf-8")
+    return moved
+
+
+def move_selected_tables(mesa_nums, dx=0, dy=0):
+    coords = load_table_coordinates()
+    selected = {int(m) for m in mesa_nums}
+    moved = 0
+    for item in coords:
+        if int(item["mesa"]) in selected:
+            item["x"] = int(item["x"]) + int(dx)
+            item["y"] = int(item["y"]) + int(dy)
+            moved += 1
+    MAP_COORDS_PATH.write_text(json.dumps(coords, ensure_ascii=False, indent=2), encoding="utf-8")
+    return moved
+
+
 def page_master():
+    if st.session_state.get("current_user") != "Adm":
+        st.error("Acesso negado ao Painel Master. Apenas o usuário Adm pode alterar mapa, imagens e aparência.")
+        return
+
     st.subheader("🛠️ Painel Master")
     st.caption("Área exclusiva do Adm para ajustar aparência, imagens e posições das mesas sem mexer no código.")
 
     cfg = load_config()
 
-    aba1, aba2, aba3, aba4 = st.tabs(["Aparência", "Imagens", "Mapa das mesas", "Posição das mesas"])
+    aba1, aba2, aba3, aba4, aba5 = st.tabs(["Aparência", "Imagens", "Mapa das mesas", "Editor visual", "Posição individual"])
 
     with aba1:
         st.markdown("### Aparência do sistema")
@@ -1129,18 +1351,101 @@ def page_master():
             )
 
     with aba4:
-        st.markdown("### Ajustar mesa com o mouse")
+        st.markdown("### Editor visual das mesas")
         st.info(
-            "Escolha a mesa e clique no ponto desejado do mapa. "
-            "A prévia foi reduzida para ficar mais rápida, mas o sistema salva na coordenada correta do mapa original."
+            "Modo editor: selecione uma ou várias mesas, arraste no mapa e clique em salvar. "
+            "Também dá para mover um grupo usando os botões de direção."
         )
-        tamanho_click = st.slider(
-            "Tamanho da imagem clicável",
-            min_value=700,
-            max_value=1400,
-            value=1050,
-            step=50,
-            help="Aumente para enxergar melhor. Diminua se ficar lento."
+
+        coords = load_table_coordinates()
+        mesas = load_mesas()
+
+        if not coords:
+            st.warning("Não encontrei as coordenadas. Use a aba 'Mapa das mesas' para recriar o padrão.")
+        else:
+            mesa_nums = [int(item["mesa"]) for item in coords]
+            selected_nums = st.multiselect(
+                "Mesas selecionadas para destacar ou mover em grupo",
+                mesa_nums,
+                default=[1],
+                help="Você pode selecionar várias mesas e usar os botões de direção para mover todas juntas."
+            )
+
+            col_a, col_b, col_c = st.columns([1, 1, 1])
+            with col_a:
+                editor_width = st.slider(
+                    "Tamanho do editor",
+                    min_value=700,
+                    max_value=1400,
+                    value=1050,
+                    step=50,
+                    help="Aumente se quiser enxergar melhor. Diminua se ficar lento."
+                )
+            with col_b:
+                passo_grupo = st.number_input("Passo do movimento em grupo", min_value=1, max_value=100, value=10)
+            with col_c:
+                st.caption("Dica: no editor, arraste as bolinhas das mesas. Depois clique em salvar.")
+
+            c1, c2, c3, c4 = st.columns(4)
+            if c1.button("⬅️ Mover grupo", use_container_width=True):
+                move_selected_tables(selected_nums, dx=-passo_grupo, dy=0)
+                st.rerun()
+            if c2.button("➡️ Mover grupo", use_container_width=True):
+                move_selected_tables(selected_nums, dx=passo_grupo, dy=0)
+                st.rerun()
+            if c3.button("⬆️ Mover grupo", use_container_width=True):
+                move_selected_tables(selected_nums, dx=0, dy=-passo_grupo)
+                st.rerun()
+            if c4.button("⬇️ Mover grupo", use_container_width=True):
+                move_selected_tables(selected_nums, dx=0, dy=passo_grupo)
+                st.rerun()
+
+            selected_set = set(selected_nums)
+            bg_uri, canvas_w, canvas_h, scale_x, scale_y, objects = build_canvas_editor_background(
+                mesas,
+                selected_set=selected_set,
+                max_width=editor_width,
+            )
+
+            initial_drawing = {
+                "version": "4.4.0",
+                "background": bg_uri,
+                "objects": objects,
+            }
+
+            canvas_result = st_canvas(
+                fill_color="rgba(255, 243, 215, 0.85)",
+                stroke_width=2,
+                stroke_color="#111827",
+                background_color="rgba(0,0,0,0)",
+                height=canvas_h,
+                width=canvas_w,
+                drawing_mode="transform",
+                initial_drawing=initial_drawing,
+                update_streamlit=True,
+                display_toolbar=False,
+                key="editor_visual_mesas",
+            )
+
+            col_save, col_reset = st.columns(2)
+            with col_save:
+                if st.button("💾 Salvar posições do editor visual", use_container_width=True):
+                    moved = save_canvas_positions(canvas_result.json_data, scale_x, scale_y)
+                    st.success(f"Posições salvas. Mesas alteradas: {moved}.")
+                    st.rerun()
+            with col_reset:
+                if st.button("🔄 Recarregar editor", use_container_width=True):
+                    st.rerun()
+
+            st.caption(
+                "Importante: arraste as mesas pelo círculo. O número acompanha a mesa na prévia final depois de salvar."
+            )
+
+    with aba5:
+        st.markdown("### Posição individual")
+        st.info(
+            "Use esta área para ajuste fino de uma mesa específica. "
+            "Para edição em massa, use a aba Editor visual."
         )
 
         coords = load_table_coordinates()
@@ -1158,27 +1463,6 @@ def page_master():
                 st.metric("Y atual", int(item["y"]))
             with col3:
                 passo = st.number_input("Passo dos botões", value=10, min_value=1, max_value=100)
-
-            st.markdown("#### Clique no mapa para mover a mesa selecionada")
-            preview_img, scale_x, scale_y = map_preview_with_selected(load_mesas(), mesa_sel, max_width=tamanho_click)
-            click = streamlit_image_coordinates(
-                preview_img,
-                key=f"map_click_{mesa_sel}",
-            )
-
-            if click is not None:
-                x_click = int(click.get("x", item["x"]) * scale_x)
-                y_click = int(click.get("y", item["y"]) * scale_y)
-
-                for i in coords:
-                    if int(i["mesa"]) == int(mesa_sel):
-                        i["x"] = x_click
-                        i["y"] = y_click
-                        break
-
-                MAP_COORDS_PATH.write_text(json.dumps(coords, ensure_ascii=False, indent=2), encoding="utf-8")
-                st.success(f"Mesa {mesa_sel} movida para X={x_click} / Y={y_click}.")
-                st.rerun()
 
             st.markdown("#### Ajuste fino")
             c1, c2, c3, c4 = st.columns(4)
@@ -1215,6 +1499,10 @@ def page_master():
                     MAP_COORDS_PATH.write_text(json.dumps(coords, ensure_ascii=False, indent=2), encoding="utf-8")
                     st.success(f"Mesa {mesa_sel} salva em X={int(x)} / Y={int(y)}.")
                     st.rerun()
+
+            st.markdown("### Prévia atualizada")
+            zoom_edit = st.slider("Zoom da prévia de edição (%)", 50, 300, int(load_config().get("map_zoom", 100)), key="zoom_preview_master_edicao_individual")
+            show_zoomable_image(generate_quadra_map(load_mesas(), show_coord_labels=True), zoom_percent=zoom_edit)
 
 
 init_files()

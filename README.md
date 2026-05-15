@@ -145,3 +145,24 @@ Para testar senha:
 - O `Painel Master > Aparência` agora tem `Zoom padrão do mapa (%)`.
 - As prévias do Painel Master também têm controle de zoom.
 - Na tela de posicionamento com clique, existe `Tamanho da imagem clicável` para equilibrar visão e velocidade.
+
+
+## Atualização: camadas de leitura e segurança Adm
+
+- Foram adicionadas camadas escuras/translúcidas nas páginas, cards, métricas e sidebar para melhorar leitura sobre a imagem de fundo.
+- O Painel Master continua aparecendo apenas para o usuário `Adm`.
+- Também foi adicionada uma trava interna: mesmo que alguém tente acessar a função do Painel Master, o sistema bloqueia se o usuário atual não for `Adm`.
+
+
+## Editor visual das mesas
+
+No Painel Master, foi adicionada a aba `Editor visual`.
+
+Recursos:
+- arrastar mesas diretamente no mapa
+- selecionar várias mesas
+- mover grupos de mesas com botões de direção
+- salvar todas as posições alteradas de uma vez
+- ajuste individual separado na aba `Posição individual`
+
+Observação: o editor usa `streamlit-drawable-canvas`.
