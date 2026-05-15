@@ -1004,10 +1004,10 @@ def build_canvas_editor_background(mesas, selected_set=None, max_width=1100, map
     """
     Cria a imagem de fundo do editor visual e os objetos arrastáveis.
 
-    Correção:
-    O fundo agora é passado pelo parâmetro background_image do st_canvas,
-    em vez de tentar usar "background" dentro do initial_drawing.
-    Isso faz o editor aparecer corretamente no Streamlit Cloud.
+    Correção importante:
+    Não usamos background_image=... no st_canvas porque a versão atual do
+    streamlit-drawable-canvas quebra com Streamlit 1.57.
+    Em vez disso, a planta é inserida como um objeto 'image' travado no Fabric.
     """
     selected_set = selected_set or set()
     map_opacity = max(10, min(100, int(map_opacity)))
@@ -1038,12 +1038,34 @@ def build_canvas_editor_background(mesas, selected_set=None, max_width=1100, map
     map_small.putalpha(alpha)
     editor_bg = Image.alpha_composite(black_bg, map_small).convert("RGB")
 
+    bio = BytesIO()
+    editor_bg.save(bio, format="PNG")
+    bg_data_uri = "data:image/png;base64," + base64.b64encode(bio.getvalue()).decode("ascii")
+
+    # Objeto de imagem travado, usado como fundo no Fabric/canvas.
+    objects = [{
+        "type": "image",
+        "left": 0,
+        "top": 0,
+        "width": canvas_w,
+        "height": canvas_h,
+        "scaleX": 1,
+        "scaleY": 1,
+        "src": bg_data_uri,
+        "selectable": False,
+        "evented": False,
+        "lockMovementX": True,
+        "lockMovementY": True,
+        "lockScalingX": True,
+        "lockScalingY": True,
+        "lockRotation": True,
+    }]
+
     coords = load_table_coordinates()
     mesas_status = {int(m["mesa"]): m.get("status", "Disponível") for m in mesas if str(m.get("mesa", "")).isdigit()}
     cfg = load_config()
     radius = int(cfg.get("map_table_radius", 22))
 
-    objects = []
     for item in coords:
         num = int(item["mesa"])
         x = int(item["x"]) / scale_x
@@ -1082,7 +1104,7 @@ def build_canvas_editor_background(mesas, selected_set=None, max_width=1100, map
             "evented": False,
         })
 
-    return editor_bg, canvas_w, canvas_h, scale_x, scale_y, objects
+    return canvas_w, canvas_h, scale_x, scale_y, objects
 
 
 def canvas_positions_signature(canvas_json, scale_x, scale_y):
@@ -1603,7 +1625,7 @@ def page_master():
                     help="Para evitar travamentos/idas e voltas, deixe desligado e use o botão salvar. Ligue apenas se estiver funcionando leve."
                 )
 
-            editor_bg, canvas_w, canvas_h, scale_x, scale_y, objects = build_canvas_editor_background(
+            canvas_w, canvas_h, scale_x, scale_y, objects = build_canvas_editor_background(
                 mesas,
                 selected_set=selected_set,
                 max_width=editor_width,
@@ -1622,7 +1644,7 @@ def page_master():
                 st.session_state[last_sig_key] = saved_sig
 
             st.markdown("#### Área de edição")
-            st.caption("Se a área abaixo aparecer vazia, clique em 'Recarregar editor'.")
+            st.caption("A planta da quadra fica travada no fundo. Arraste apenas as bolinhas das mesas.")
             canvas_key = f"editor_visual_mesas_{st.session_state.get('editor_visual_nonce', 0)}"
 
             canvas_result = st_canvas(
@@ -1630,7 +1652,6 @@ def page_master():
                 stroke_width=2,
                 stroke_color="#111827",
                 background_color="#000000",
-                background_image=editor_bg,
                 height=canvas_h,
                 width=canvas_w,
                 drawing_mode="transform",

@@ -225,3 +225,10 @@ Para tornar uma nova aparência permanente:
 - O fundo do editor visual agora usa `background_image=editor_bg` diretamente no `st_canvas`.
 - Removido o uso de `background` dentro do `initial_drawing`, que podia fazer o canvas não aparecer no Streamlit Cloud.
 - O botão `Recarregar editor` agora força a recriação do componente.
+
+
+## Correção do erro AttributeError no editor
+
+A versão `streamlit-drawable-canvas==0.9.3` não funcionou bem com `background_image`
+no Streamlit 1.57. O fundo do editor agora é inserido como um objeto de imagem
+travado dentro do próprio canvas, evitando o erro `background_image_url`.
