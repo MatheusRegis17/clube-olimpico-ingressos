@@ -192,3 +192,11 @@ Ela permite:
 - `save_config` agora salva sempre o arquivo completo `data/config.json`.
 - O botão agora é `Salvar aparência como padrão`.
 - Enquanto o Streamlit preservar os arquivos do app, as configurações de fundo/desfoque/opacidade serão mantidas nas próximas entradas.
+
+
+## Editor visual estabilizado
+
+- O editor visual agora usa fundo preto com a planta da quadra transparente.
+- Foi adicionado controle de transparência da planta no editor.
+- O salvamento automático foi corrigido para salvar quando a posição do canvas muda em relação ao mapa salvo.
+- Se o editor ficar pesado, desmarque `Salvar automaticamente ao soltar mesas` e use `Salvar posições agora`.

@@ -1000,39 +1000,46 @@ def map_preview_with_selected(mesas, selected_mesa=None, max_width=1050):
 
 
 
-def build_canvas_editor_background(mesas, selected_set=None, max_width=1100):
+def build_canvas_editor_background(mesas, selected_set=None, max_width=1100, map_opacity=48):
     """
-    Cria uma imagem leve para o editor visual:
-    - fundo = mapa base
-    - mesas desenhadas como objetos arrastáveis pelo canvas
-    Retorna: data_uri, canvas_w, canvas_h, scale_x, scale_y, objects
+    Cria uma imagem leve para o editor visual.
+
+    Novo padrão:
+    - fundo preto
+    - planta da quadra por cima com transparência
+    - mesas como objetos arrastáveis
     """
     selected_set = selected_set or set()
+    map_opacity = max(10, min(100, int(map_opacity)))
 
     if MAP_BACKGROUND_PATH.exists():
-        base = Image.open(MAP_BACKGROUND_PATH).convert("RGBA")
+        base_original = Image.open(MAP_BACKGROUND_PATH).convert("RGBA")
     else:
-        base = Image.new("RGBA", (2000, 1414), (18, 33, 61, 255))
+        base_original = Image.new("RGBA", (2000, 1414), (18, 33, 61, 255))
 
-    original_w, original_h = base.size
+    original_w, original_h = base_original.size
+
     if original_w > max_width:
-        canvas_w = max_width
+        canvas_w = int(max_width)
         canvas_h = int(original_h * (canvas_w / original_w))
         scale_x = original_w / canvas_w
         scale_y = original_h / canvas_h
-        base_small = base.resize((canvas_w, canvas_h))
+        map_small = base_original.resize((canvas_w, canvas_h))
     else:
         canvas_w, canvas_h = original_w, original_h
         scale_x = 1.0
         scale_y = 1.0
-        base_small = base
+        map_small = base_original
 
-    # fundo com menos brilho para destacar mesas
-    dim = Image.new("RGBA", base_small.size, (0, 0, 0, 40))
-    base_small = Image.alpha_composite(base_small, dim)
+    # fundo preto + mapa transparente
+    black_bg = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 255))
+    alpha = map_small.getchannel("A")
+    alpha = alpha.point(lambda p: int(p * (map_opacity / 100)))
+    map_small.putalpha(alpha)
+    editor_bg = Image.alpha_composite(black_bg, map_small)
 
     bio = BytesIO()
-    base_small.save(bio, format="PNG")
+    editor_bg.save(bio, format="PNG")
     data_uri = "data:image/png;base64," + base64.b64encode(bio.getvalue()).decode("ascii")
 
     coords = load_table_coordinates()
@@ -1049,7 +1056,7 @@ def build_canvas_editor_background(mesas, selected_set=None, max_width=1100):
         fill, outline, _ = table_colors(status)
         selected = num in selected_set
 
-        circle_radius = max(10, int(radius / scale_x))
+        circle_radius = max(11, int(radius / scale_x))
         objects.append({
             "type": "circle",
             "left": x - circle_radius,
@@ -1057,7 +1064,7 @@ def build_canvas_editor_background(mesas, selected_set=None, max_width=1100):
             "radius": circle_radius,
             "fill": "#fff3d7" if not selected else "#fff200",
             "stroke": "#111827" if not selected else "#ff0000",
-            "strokeWidth": 2 if not selected else 4,
+            "strokeWidth": 2 if not selected else 5,
             "mesa_num": num,
             "selectable": True,
             "hasControls": True,
@@ -1080,27 +1087,6 @@ def build_canvas_editor_background(mesas, selected_set=None, max_width=1100):
         })
 
     return data_uri, canvas_w, canvas_h, scale_x, scale_y, objects
-
-
-def canvas_positions_signature(canvas_json, scale_x, scale_y):
-    """Assinatura simples das posições atuais do canvas para detectar mudanças."""
-    if not canvas_json or "objects" not in canvas_json:
-        return ""
-
-    circles = [obj for obj in canvas_json.get("objects", []) if obj.get("type") == "circle"]
-    parts = []
-    for idx, obj in enumerate(circles):
-        try:
-            radius = float(obj.get("radius", 0))
-            left = float(obj.get("left", 0))
-            top = float(obj.get("top", 0))
-            center_x = int(round((left + radius) * scale_x))
-            center_y = int(round((top + radius) * scale_y))
-            mesa_num = obj.get("mesa_num", idx + 1)
-            parts.append(f"{mesa_num}:{center_x}:{center_y}")
-        except Exception:
-            pass
-    return "|".join(parts)
 
 
 def save_canvas_positions(canvas_json, scale_x, scale_y):
@@ -1565,10 +1551,29 @@ def page_master():
                 st.rerun()
 
             selected_set = set(selected_nums)
+
+            col_op1, col_op2 = st.columns(2)
+            with col_op1:
+                map_opacity_editor = st.slider(
+                    "Transparência da planta no editor (%)",
+                    min_value=10,
+                    max_value=100,
+                    value=48,
+                    step=5,
+                    help="Deixe mais baixo para o fundo ficar mais preto; mais alto para enxergar melhor a planta."
+                )
+            with col_op2:
+                auto_save_editor = st.checkbox(
+                    "Salvar automaticamente ao soltar mesas",
+                    value=True,
+                    help="Se bugar ou ficar pulando, desmarque e use o botão salvar."
+                )
+
             bg_uri, canvas_w, canvas_h, scale_x, scale_y, objects = build_canvas_editor_background(
                 mesas,
                 selected_set=selected_set,
                 max_width=editor_width,
+                map_opacity=map_opacity_editor,
             )
 
             initial_drawing = {
@@ -1576,6 +1581,12 @@ def page_master():
                 "background": bg_uri,
                 "objects": objects,
             }
+
+            # Assinatura da posição salva antes do canvas.
+            saved_sig = canvas_positions_signature({"objects": objects}, scale_x, scale_y)
+            last_sig_key = "editor_visual_last_saved_signature"
+            if st.session_state.get(last_sig_key) in ("", None):
+                st.session_state[last_sig_key] = saved_sig
 
             canvas_result = st_canvas(
                 fill_color="rgba(255, 243, 215, 0.85)",
@@ -1591,23 +1602,13 @@ def page_master():
                 key="editor_visual_mesas",
             )
 
-            auto_save_editor = st.checkbox(
-                "Salvar automaticamente ao mover mesas",
-                value=True,
-                help="Quando ativado, ao soltar uma mesa no editor o sistema salva as posições e o mapa principal já passa a usar o novo layout."
-            )
-
             current_sig = canvas_positions_signature(canvas_result.json_data, scale_x, scale_y) if canvas_result.json_data else ""
-            last_sig_key = "editor_visual_last_saved_signature"
 
-            if auto_save_editor and current_sig:
-                if st.session_state.get(last_sig_key) not in ("", current_sig, None):
-                    moved = save_canvas_positions(canvas_result.json_data, scale_x, scale_y)
-                    st.session_state[last_sig_key] = current_sig
-                    if moved > 0:
-                        st.success(f"Editor visual salvo automaticamente. Mesas alteradas: {moved}.")
-                elif last_sig_key not in st.session_state:
-                    st.session_state[last_sig_key] = current_sig
+            if auto_save_editor and current_sig and current_sig != saved_sig:
+                moved = save_canvas_positions(canvas_result.json_data, scale_x, scale_y)
+                st.session_state[last_sig_key] = current_sig
+                if moved > 0:
+                    st.success(f"Salvo automaticamente. Mesas alteradas: {moved}. O mapa principal já foi atualizado.")
 
             col_save, col_reset = st.columns(2)
             with col_save:
@@ -1617,12 +1618,12 @@ def page_master():
                     st.success(f"Posições salvas. Mesas alteradas: {moved}.")
                     st.rerun()
             with col_reset:
-                if st.button("🔄 Recarregar editor", use_container_width=True):
+                if st.button("🔄 Recarregar editor a partir do mapa salvo", use_container_width=True):
                     st.session_state[last_sig_key] = ""
                     st.rerun()
 
             st.caption(
-                "Importante: depois de salvar, a página Mesas usa automaticamente a nova posição. Se quiser conferir, abra a aba Mesas."
+                "O fundo preto com a quadra transparente serve apenas para edição. Depois de salvar, a página Mesas usa a imagem normal do mapa."
             )
 
     with aba5:
