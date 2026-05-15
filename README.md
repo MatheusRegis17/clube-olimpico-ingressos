@@ -178,3 +178,17 @@ Ela permite:
 - organizar as mesas em grade com X inicial, Y inicial, colunas e espaçamento
 - mover um bloco inteiro mantendo o desenho atual
 - reorganizar fileiras e setores muito mais rápido do que mexer mesa por mesa
+
+
+## Correção: editor visual salva no mapa principal
+
+- O editor visual agora salva posições mesmo quando o componente remove campos internos.
+- O salvamento usa a ordem dos círculos como fallback, garantindo que a posição seja aplicada ao `mesa_coords.json`.
+- Foi adicionada opção `Salvar automaticamente ao mover mesas`.
+- O botão manual agora se chama `Salvar posições agora`.
+
+## Correção: aparência salva
+
+- `save_config` agora salva sempre o arquivo completo `data/config.json`.
+- O botão agora é `Salvar aparência como padrão`.
+- Enquanto o Streamlit preservar os arquivos do app, as configurações de fundo/desfoque/opacidade serão mantidas nas próximas entradas.

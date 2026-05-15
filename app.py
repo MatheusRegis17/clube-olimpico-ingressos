@@ -64,7 +64,9 @@ def load_config():
 
 def save_config(cfg):
     DATA_DIR.mkdir(exist_ok=True)
-    CONFIG_PATH.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    base = default_config()
+    base.update(cfg)
+    CONFIG_PATH.write_text(json.dumps(base, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def image_data_uri(path):
@@ -1080,24 +1082,55 @@ def build_canvas_editor_background(mesas, selected_set=None, max_width=1100):
     return data_uri, canvas_w, canvas_h, scale_x, scale_y, objects
 
 
+def canvas_positions_signature(canvas_json, scale_x, scale_y):
+    """Assinatura simples das posições atuais do canvas para detectar mudanças."""
+    if not canvas_json or "objects" not in canvas_json:
+        return ""
+
+    circles = [obj for obj in canvas_json.get("objects", []) if obj.get("type") == "circle"]
+    parts = []
+    for idx, obj in enumerate(circles):
+        try:
+            radius = float(obj.get("radius", 0))
+            left = float(obj.get("left", 0))
+            top = float(obj.get("top", 0))
+            center_x = int(round((left + radius) * scale_x))
+            center_y = int(round((top + radius) * scale_y))
+            mesa_num = obj.get("mesa_num", idx + 1)
+            parts.append(f"{mesa_num}:{center_x}:{center_y}")
+        except Exception:
+            pass
+    return "|".join(parts)
+
+
 def save_canvas_positions(canvas_json, scale_x, scale_y):
     """
     Salva posições de todas as mesas movimentadas no canvas.
-    A posição é calculada pelo centro do círculo.
+
+    Importante:
+    O componente pode remover campos personalizados como mesa_num.
+    Por isso, se mesa_num não existir no objeto, usamos a ordem dos círculos
+    para ligar cada círculo à mesa correspondente.
     """
     if not canvas_json or "objects" not in canvas_json:
         return 0
 
     coords = load_table_coordinates()
-    coords_by_num = {int(item["mesa"]): item for item in coords}
+    coords_sorted = sorted(coords, key=lambda x: int(x["mesa"]))
+    coords_by_num = {int(item["mesa"]): item for item in coords_sorted}
+
+    circle_objects = [obj for obj in canvas_json.get("objects", []) if obj.get("type") == "circle"]
     moved = 0
 
-    for obj in canvas_json.get("objects", []):
-        if obj.get("type") != "circle":
-            continue
+    for idx, obj in enumerate(circle_objects):
+        # 1) tenta usar mesa_num preservado
         num = obj.get("mesa_num")
+
+        # 2) fallback: se o componente perdeu mesa_num, usa a ordem dos círculos
         if num is None:
-            continue
+            if idx >= len(coords_sorted):
+                continue
+            num = int(coords_sorted[idx]["mesa"])
 
         try:
             num = int(num)
@@ -1119,8 +1152,8 @@ def save_canvas_positions(canvas_json, scale_x, scale_y):
                 coords_by_num[num]["y"] = new_y
                 moved += 1
 
-    coords_sorted = sorted(coords_by_num.values(), key=lambda x: int(x["mesa"]))
-    MAP_COORDS_PATH.write_text(json.dumps(coords_sorted, ensure_ascii=False, indent=2), encoding="utf-8")
+    coords_final = sorted(coords_by_num.values(), key=lambda x: int(x["mesa"]))
+    MAP_COORDS_PATH.write_text(json.dumps(coords_final, ensure_ascii=False, indent=2), encoding="utf-8")
     return moved
 
 
@@ -1400,10 +1433,14 @@ def page_master():
                 value=cfg.get("primary_color", "#2f6bff")
             )
 
-        if st.button("Salvar aparência", use_container_width=True):
+        if st.button("Salvar aparência como padrão", use_container_width=True):
             save_config(cfg)
-            st.success("Aparência salva. Se não atualizar sozinho, use Reboot ou recarregue a página.")
+            st.success("Aparência salva como padrão. Essas configurações serão usadas nas próximas entradas enquanto os arquivos do app forem preservados.")
             st.rerun()
+
+        with st.expander("Backup / restauração rápida da aparência"):
+            st.code(json.dumps(cfg, ensure_ascii=False, indent=2), language="json")
+            st.caption("Se algum dia o Streamlit reiniciar e perder arquivos internos, copie esse JSON para comparar ou restaurar manualmente.")
 
     with aba2:
         st.markdown("### Trocar imagens")
@@ -1554,18 +1591,38 @@ def page_master():
                 key="editor_visual_mesas",
             )
 
+            auto_save_editor = st.checkbox(
+                "Salvar automaticamente ao mover mesas",
+                value=True,
+                help="Quando ativado, ao soltar uma mesa no editor o sistema salva as posições e o mapa principal já passa a usar o novo layout."
+            )
+
+            current_sig = canvas_positions_signature(canvas_result.json_data, scale_x, scale_y) if canvas_result.json_data else ""
+            last_sig_key = "editor_visual_last_saved_signature"
+
+            if auto_save_editor and current_sig:
+                if st.session_state.get(last_sig_key) not in ("", current_sig, None):
+                    moved = save_canvas_positions(canvas_result.json_data, scale_x, scale_y)
+                    st.session_state[last_sig_key] = current_sig
+                    if moved > 0:
+                        st.success(f"Editor visual salvo automaticamente. Mesas alteradas: {moved}.")
+                elif last_sig_key not in st.session_state:
+                    st.session_state[last_sig_key] = current_sig
+
             col_save, col_reset = st.columns(2)
             with col_save:
-                if st.button("💾 Salvar posições do editor visual", use_container_width=True):
+                if st.button("💾 Salvar posições agora", use_container_width=True):
                     moved = save_canvas_positions(canvas_result.json_data, scale_x, scale_y)
+                    st.session_state[last_sig_key] = canvas_positions_signature(canvas_result.json_data, scale_x, scale_y)
                     st.success(f"Posições salvas. Mesas alteradas: {moved}.")
                     st.rerun()
             with col_reset:
                 if st.button("🔄 Recarregar editor", use_container_width=True):
+                    st.session_state[last_sig_key] = ""
                     st.rerun()
 
             st.caption(
-                "Importante: para reorganizar fileiras inteiras, use o botão 'Editor de bloco / grade'. Para ajustes livres, arraste as bolinhas e salve."
+                "Importante: depois de salvar, a página Mesas usa automaticamente a nova posição. Se quiser conferir, abra a aba Mesas."
             )
 
     with aba5:
