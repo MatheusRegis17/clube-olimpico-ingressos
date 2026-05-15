@@ -69,3 +69,10 @@ Main file path: `app.py`
 - card branco
 - botão azul
 - logo em formato escudo
+
+
+## Design livre
+- nova tela de login com layout profissional
+- painel informativo à esquerda
+- card de acesso à direita
+- identidade mais limpa e equilibrada
