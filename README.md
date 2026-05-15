@@ -1,16 +1,11 @@
 # Clube Olímpico Ingressos
 
-Versão pronta para subir no GitHub.
+Versão final pronta para subir no GitHub.
 
-## Melhorias desta versão
-- logos sem fundo
-- acesso lembrado automaticamente
-- botão para trocar de usuário
-- sem pasta assets
+- logo do clube sem fundo e com aparência melhor
+- logo do Arraiá apenas na seção Festa Junina
+- fundo ajustado
+- tela de login lembrando o último acesso
+- mapa visual da quadra com 100 mesas na página Mesas
 
-## Estrutura
-- app.py
-- data/users.json
-
-## Streamlit
-Main file path: `app.py`
+No Streamlit, mantenha Main file path = app.py
