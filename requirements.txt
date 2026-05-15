@@ -1,5 +1,13 @@
-streamlit
-pandas
-gspread
-google-auth
-streamlit-option-menu
+# Clube Olímpico Ingressos
+
+Versão com identidade visual aplicada.
+
+## Inclui
+- Logo oficial do Clube Olímpico
+- Arte temática do Arraiá integrada ao layout
+- Tela de login com primeiro acesso
+- Menu moderno
+- Controle de mesas e ingressos
+- Gratuidade do presidente com popup de senha
+
+Senha da gratuidade: `Cata1010#`
