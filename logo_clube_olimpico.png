@@ -1,2 +1,34 @@
-streamlit
-pandas
+# Clube Olímpico Ingressos
+
+Versão testada sem `requirements.txt`.
+
+## Importante
+
+Esta versão não possui arquivo `requirements.txt`, para evitar erro de instalação no Streamlit Cloud.
+
+## Como publicar
+
+No Streamlit, use:
+
+```text
+Main file path: app.py
+```
+
+Se você subir a pasta inteira para dentro do repositório, use:
+
+```text
+Main file path: clube-olimpico-ingressos/app.py
+```
+
+## Usuários
+
+- Secretaria Lucas
+- Secretaria Juliana
+- Adm
+- Carla Curi
+
+## Senha da gratuidade
+
+```text
+Cata1010#
+```
