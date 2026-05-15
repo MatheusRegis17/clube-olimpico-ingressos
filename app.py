@@ -82,39 +82,20 @@ def image_data_uri(path):
 
 
 def inject_background():
-    """Aplica o fundo de forma robusta no Streamlit Cloud."""
+    """Aplica a imagem de fundo usando uma tag <img> fixa atrás do app."""
     cfg = load_config()
     bg_uri_local = image_data_uri(BACKGROUND_PATH)
     if not bg_uri_local:
-        st.warning("Imagem de fundo não encontrada em assets/background_festa_junina.png")
         return
 
-    opacity = max(0, min(95, int(cfg.get("background_opacity", 30)))) / 100
+    opacity = max(0, min(95, int(cfg.get("background_opacity", 38)))) / 100
     blur = max(0, min(20, int(cfg.get("background_blur", 0))))
     position = cfg.get("background_position", "center center")
 
+    # Como este bloco é uma f-string, todas as chaves CSS precisam ser duplicadas.
     st.markdown(
         f"""
         <style>
-        html, body, .stApp, [data-testid="stAppViewContainer"] {{
-            background-color: #07111f !important;
-            background-image:
-                linear-gradient(rgba(4,10,20,{opacity}), rgba(4,10,20,{min(0.86, opacity + 0.08)})),
-                url("{bg_uri_local}") !important;
-            background-size: cover !important;
-            background-position: {position} !important;
-            background-repeat: no-repeat !important;
-            background-attachment: fixed !important;
-        }}
-
-        [data-testid="stAppViewContainer"] > .main {{
-            background: transparent !important;
-        }}
-
-        [data-testid="stHeader"] {{
-            background: transparent !important;
-        }}
-
         .coj-fixed-bg {{
             position: fixed;
             inset: 0;
@@ -122,95 +103,47 @@ def inject_background():
             height: 100vh;
             object-fit: cover;
             object-position: {position};
-            z-index: -1;
+            z-index: 0;
             pointer-events: none;
             filter: blur({blur}px);
             transform: scale(1.02);
         }}
+        .coj-bg-overlay {{
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background:
+                linear-gradient(
+                    rgba(4,10,20,{opacity}),
+                    rgba(4,10,20,{min(0.88, opacity + 0.10)})
+                );
+        }}
 
+        [data-testid="stAppViewContainer"],
+        .stApp {{
+            background: transparent !important;
+        }}
+
+        [data-testid="stAppViewContainer"] > .main,
         .block-container {{
             position: relative;
             z-index: 2;
         }}
-        
-/* ===== Camadas de leitura sobre o fundo ===== */
-.block-container {
-    background: linear-gradient(135deg, rgba(3, 8, 20, 0.56), rgba(9, 19, 38, 0.42)) !important;
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 28px;
-    box-shadow: 0 24px 70px rgba(0,0,0,0.34);
-    backdrop-filter: blur(8px);
-    margin-top: 14px;
-}
 
-.hero, .glass-card, .event-card, .map-card {
-    background: linear-gradient(135deg, rgba(7, 13, 28, 0.94), rgba(13, 27, 54, 0.90)) !important;
-    border: 1px solid rgba(255,255,255,0.18) !important;
-    box-shadow: 0 18px 46px rgba(0,0,0,0.42) !important;
-    backdrop-filter: blur(14px) !important;
-}
+        [data-testid="stHeader"] {{
+            background: transparent !important;
+            z-index: 3;
+        }}
 
-section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, rgba(4, 10, 20, 0.94), rgba(7, 17, 31, 0.96)) !important;
-    border-right: 1px solid rgba(255,255,255,0.12);
-    backdrop-filter: blur(14px);
-}
+        section[data-testid="stSidebar"] {{
+            position: relative;
+            z-index: 4;
+        }}
+        </style>
 
-[data-testid="stMetric"] {
-    background: linear-gradient(135deg, rgba(7, 13, 28, 0.84), rgba(13, 27, 54, 0.74));
-    border: 1px solid rgba(255,255,255,0.14);
-    border-radius: 18px;
-    padding: 16px 18px;
-    box-shadow: 0 14px 32px rgba(0,0,0,0.26);
-    backdrop-filter: blur(10px);
-}
-
-[data-testid="stMetricLabel"] p {
-    color: #e5efff !important;
-    font-weight: 750 !important;
-}
-
-[data-testid="stMetricValue"] {
-    color: #ffffff !important;
-    text-shadow: 0 2px 10px rgba(0,0,0,0.45);
-}
-
-[data-testid="stRadio"] {
-    background: rgba(5, 12, 25, 0.58);
-    border: 1px solid rgba(255,255,255,0.10);
-    border-radius: 16px;
-    padding: 10px 14px;
-    backdrop-filter: blur(8px);
-}
-
-div[data-testid="stTabs"] button {
-    color: #ffffff !important;
-}
-
-div[data-testid="stTabs"] [data-baseweb="tab-list"] {
-    background: rgba(5, 12, 25, 0.48);
-    border-radius: 14px;
-    padding: 6px;
-}
-
-div[data-testid="stAlert"] {
-    border-radius: 16px !important;
-    backdrop-filter: blur(8px);
-}
-
-h1, h2, h3, h4, h5, h6, p, label, span {
-    text-shadow: 0 1px 8px rgba(0,0,0,0.20);
-}
-
-[data-testid="stDataFrame"] {
-    background: rgba(7, 13, 28, 0.88);
-    border-radius: 16px;
-    border: 1px solid rgba(255,255,255,0.14);
-    overflow: hidden;
-}
-
-</style>
         <img class="coj-fixed-bg" src="{bg_uri_local}" />
+        <div class="coj-bg-overlay"></div>
         """,
         unsafe_allow_html=True,
     )
