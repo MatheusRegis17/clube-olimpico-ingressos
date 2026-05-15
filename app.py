@@ -1137,6 +1137,195 @@ def move_selected_tables(mesa_nums, dx=0, dy=0):
     return moved
 
 
+
+def selected_table_numbers_from_range(inicio, fim):
+    inicio = int(inicio)
+    fim = int(fim)
+    if inicio > fim:
+        inicio, fim = fim, inicio
+    return list(range(inicio, fim + 1))
+
+
+def apply_grid_layout_to_tables(table_nums, start_x, start_y, columns, spacing_x, spacing_y):
+    """Organiza as mesas selecionadas em grade."""
+    table_nums = [int(n) for n in table_nums]
+    if not table_nums:
+        return 0
+
+    coords = load_table_coordinates()
+    by_num = {int(item["mesa"]): item for item in coords}
+    columns = max(1, int(columns))
+    moved = 0
+
+    for idx, num in enumerate(table_nums):
+        if num not in by_num:
+            continue
+        row = idx // columns
+        col = idx % columns
+        new_x = int(start_x + col * spacing_x)
+        new_y = int(start_y + row * spacing_y)
+
+        if int(by_num[num]["x"]) != new_x or int(by_num[num]["y"]) != new_y:
+            by_num[num]["x"] = new_x
+            by_num[num]["y"] = new_y
+            moved += 1
+
+    coords_sorted = sorted(by_num.values(), key=lambda x: int(x["mesa"]))
+    MAP_COORDS_PATH.write_text(json.dumps(coords_sorted, ensure_ascii=False, indent=2), encoding="utf-8")
+    return moved
+
+
+def move_tables_to_anchor(table_nums, anchor_x, anchor_y):
+    """Move o bloco selecionado mantendo o desenho atual."""
+    table_nums = [int(n) for n in table_nums]
+    if not table_nums:
+        return 0
+
+    coords = load_table_coordinates()
+    by_num = {int(item["mesa"]): item for item in coords}
+    first = table_nums[0]
+    if first not in by_num:
+        return 0
+
+    old_anchor_x = int(by_num[first]["x"])
+    old_anchor_y = int(by_num[first]["y"])
+    dx = int(anchor_x) - old_anchor_x
+    dy = int(anchor_y) - old_anchor_y
+
+    moved = 0
+    for num in table_nums:
+        if num not in by_num:
+            continue
+        by_num[num]["x"] = int(by_num[num]["x"]) + dx
+        by_num[num]["y"] = int(by_num[num]["y"]) + dy
+        moved += 1
+
+    coords_sorted = sorted(by_num.values(), key=lambda x: int(x["mesa"]))
+    MAP_COORDS_PATH.write_text(json.dumps(coords_sorted, ensure_ascii=False, indent=2), encoding="utf-8")
+    return moved
+
+
+def get_table_anchor(table_nums):
+    table_nums = [int(n) for n in table_nums]
+    coords = load_table_coordinates()
+    by_num = {int(item["mesa"]): item for item in coords}
+    if not table_nums or table_nums[0] not in by_num:
+        return 900, 400
+    first = by_num[table_nums[0]]
+    return int(first["x"]), int(first["y"])
+
+
+def get_grid_defaults(table_nums):
+    table_nums = [int(n) for n in table_nums]
+    if not table_nums:
+        return 900, 400, 10, 90, 90
+
+    coords = load_table_coordinates()
+    by_num = {int(item["mesa"]): item for item in coords}
+    valid = [by_num[n] for n in table_nums if n in by_num]
+    if not valid:
+        return 900, 400, 10, 90, 90
+
+    min_x = min(int(i["x"]) for i in valid)
+    min_y = min(int(i["y"]) for i in valid)
+
+    count = len(valid)
+    if count >= 80:
+        cols = 10
+    elif count >= 40:
+        cols = 8
+    elif count >= 20:
+        cols = 5
+    else:
+        cols = min(5, count)
+
+    return min_x, min_y, cols, 90, 90
+
+
+@st.dialog("Editor de bloco de mesas")
+def dialog_editor_bloco():
+    st.write("Use esta janela para reorganizar várias mesas de uma vez, como um bloco.")
+
+    modo_sel = st.radio(
+        "Como selecionar o bloco?",
+        ["Intervalo de mesas", "Selecionar manualmente"],
+        horizontal=True,
+        key="bloco_modo_sel",
+    )
+
+    all_nums = [int(item["mesa"]) for item in load_table_coordinates()]
+
+    if modo_sel == "Intervalo de mesas":
+        col_i, col_f = st.columns(2)
+        with col_i:
+            inicio = st.number_input("Mesa inicial", min_value=1, max_value=100, value=1, step=1, key="bloco_inicio")
+        with col_f:
+            fim = st.number_input("Mesa final", min_value=1, max_value=100, value=20, step=1, key="bloco_fim")
+        table_nums = selected_table_numbers_from_range(inicio, fim)
+    else:
+        table_nums = st.multiselect(
+            "Mesas do bloco",
+            all_nums,
+            default=st.session_state.get("bloco_manual_default", [1, 2, 3, 4, 5]),
+            key="bloco_manual",
+        )
+
+    st.caption(f"Mesas selecionadas: {len(table_nums)}")
+
+    acao = st.radio(
+        "O que você quer fazer?",
+        ["Organizar em grade", "Mover bloco mantendo desenho atual"],
+        horizontal=False,
+        key="bloco_acao",
+    )
+
+    if acao == "Organizar em grade":
+        default_x, default_y, default_cols, default_sx, default_sy = get_grid_defaults(table_nums)
+
+        c1, c2 = st.columns(2)
+        with c1:
+            start_x = st.number_input("X inicial do bloco", value=int(default_x), step=10, key="grid_start_x")
+            spacing_x = st.number_input("Espaço horizontal entre mesas", value=int(default_sx), step=5, key="grid_spacing_x")
+        with c2:
+            start_y = st.number_input("Y inicial do bloco", value=int(default_y), step=10, key="grid_start_y")
+            spacing_y = st.number_input("Espaço vertical entre mesas", value=int(default_sy), step=5, key="grid_spacing_y")
+
+        columns = st.number_input(
+            "Quantidade de colunas do bloco",
+            min_value=1,
+            max_value=20,
+            value=int(default_cols),
+            step=1,
+            key="grid_columns",
+        )
+
+        st.info("Exemplo: se selecionar mesas 1 a 40 e colocar 10 colunas, o sistema cria 4 linhas com 10 mesas.")
+
+        if st.button("Aplicar grade ao bloco", use_container_width=True):
+            moved = apply_grid_layout_to_tables(table_nums, start_x, start_y, columns, spacing_x, spacing_y)
+            st.success(f"Grade aplicada. Mesas alteradas: {moved}.")
+            st.rerun()
+
+    else:
+        anchor_x_default, anchor_y_default = get_table_anchor(table_nums)
+
+        c1, c2 = st.columns(2)
+        with c1:
+            anchor_x = st.number_input("Novo X da primeira mesa do bloco", value=int(anchor_x_default), step=10, key="anchor_x")
+        with c2:
+            anchor_y = st.number_input("Novo Y da primeira mesa do bloco", value=int(anchor_y_default), step=10, key="anchor_y")
+
+        st.info("O bloco inteiro se move junto, mantendo a posição relativa entre as mesas.")
+
+        if st.button("Mover bloco inteiro", use_container_width=True):
+            moved = move_tables_to_anchor(table_nums, anchor_x, anchor_y)
+            st.success(f"Bloco movido. Mesas alteradas: {moved}.")
+            st.rerun()
+
+    st.markdown("---")
+    st.caption("Depois de aplicar, feche a janela e veja a prévia atualizada no Painel Master.")
+
+
 def page_master():
     if st.session_state.get("current_user") != "Adm":
         st.error("Acesso negado ao Painel Master. Apenas o usuário Adm pode alterar mapa, imagens e aparência.")
@@ -1264,6 +1453,8 @@ def page_master():
 
     with aba3:
         st.markdown("### Prévia do mapa")
+        if st.button("🧩 Abrir editor de bloco / grade", key="abrir_bloco_mapa_tab", use_container_width=True):
+            dialog_editor_bloco()
         mesas = load_mesas()
         zoom_prev = st.slider("Zoom da prévia (%)", 50, 300, int(cfg.get("map_zoom", 100)), key="zoom_preview_master_mapa")
         show_zoomable_image(generate_quadra_map(mesas), zoom_percent=zoom_prev)
@@ -1289,6 +1480,9 @@ def page_master():
             "Modo editor: selecione uma ou várias mesas, arraste no mapa e clique em salvar. "
             "Também dá para mover um grupo usando os botões de direção."
         )
+
+        if st.button("🧩 Abrir editor de bloco / grade", use_container_width=True):
+            dialog_editor_bloco()
 
         coords = load_table_coordinates()
         mesas = load_mesas()
@@ -1371,7 +1565,7 @@ def page_master():
                     st.rerun()
 
             st.caption(
-                "Importante: arraste as mesas pelo círculo. O número acompanha a mesa na prévia final depois de salvar."
+                "Importante: para reorganizar fileiras inteiras, use o botão 'Editor de bloco / grade'. Para ajustes livres, arraste as bolinhas e salve."
             )
 
     with aba5:

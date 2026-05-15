@@ -166,3 +166,15 @@ Recursos:
 - ajuste individual separado na aba `Posição individual`
 
 Observação: o editor usa `streamlit-drawable-canvas`.
+
+
+## Editor de bloco / grade
+
+Foi adicionada uma janela de edição de bloco no Painel Master.
+
+Ela permite:
+- selecionar um intervalo de mesas, como 1 a 40
+- selecionar mesas manualmente
+- organizar as mesas em grade com X inicial, Y inicial, colunas e espaçamento
+- mover um bloco inteiro mantendo o desenho atual
+- reorganizar fileiras e setores muito mais rápido do que mexer mesa por mesa
