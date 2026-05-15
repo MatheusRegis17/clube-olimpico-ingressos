@@ -1,16 +1,20 @@
 {
   "users": {
     "Secretaria Lucas": {
-      "password_hash": ""
+      "password_hash": "",
+      "is_admin": false
     },
     "Secretaria Juliana": {
-      "password_hash": ""
+      "password_hash": "",
+      "is_admin": false
     },
     "Adm": {
-      "password_hash": "c4a4575f6b5c8ea90763c35c88c35af4ce36f4a115db3c35afa2f80267198748"
+      "password_hash": "c4a4575f6b5c8ea90763c35c88c35af4ce36f4a115db3c35afa2f80267198748",
+      "is_admin": true
     },
     "Carla Curi": {
-      "password_hash": ""
+      "password_hash": "",
+      "is_admin": false
     }
   },
   "meta": {

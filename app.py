@@ -460,24 +460,53 @@ def write_csv_rows(path, columns, rows):
 
 def load_auth_data():
     if not USERS_PATH.exists():
-        data = {'users': {u: {'password_hash': ''} for u in USUARIOS_PADRAO}, 'meta': {'last_user': ''}}
+        data = {'users': {u: {'password_hash': '', 'is_admin': (u == 'Adm')} for u in USUARIOS_PADRAO}, 'meta': {'last_user': ''}}
         USERS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
         return data
+
     raw = json.loads(USERS_PATH.read_text(encoding='utf-8'))
+
     if 'users' not in raw:
         new_raw = {'users': {}, 'meta': {'last_user': ''}}
         for u in USUARIOS_PADRAO:
             if u in raw and isinstance(raw[u], dict):
-                new_raw['users'][u] = {'password_hash': raw[u].get('password_hash', '')}
+                new_raw['users'][u] = {
+                    'password_hash': raw[u].get('password_hash', ''),
+                    'is_admin': (u == 'Adm')
+                }
             else:
-                new_raw['users'][u] = {'password_hash': ''}
+                new_raw['users'][u] = {'password_hash': '', 'is_admin': (u == 'Adm')}
         raw = new_raw
         USERS_PATH.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding='utf-8')
+
+    raw.setdefault('users', {})
     raw.setdefault('meta', {})
     raw['meta'].setdefault('last_user', '')
+
     for u in USUARIOS_PADRAO:
-        raw['users'].setdefault(u, {'password_hash': ''})
+        raw['users'].setdefault(u, {'password_hash': '', 'is_admin': (u == 'Adm')})
+        raw['users'][u].setdefault('password_hash', '')
+        raw['users'][u].setdefault('is_admin', (u == 'Adm'))
+
+    for u, info in raw['users'].items():
+        if not isinstance(info, dict):
+            raw['users'][u] = {'password_hash': '', 'is_admin': False}
+        else:
+            info.setdefault('password_hash', '')
+            info.setdefault('is_admin', (u == 'Adm'))
+
     return raw
+
+
+def is_admin_user(usuario=None):
+    usuario = usuario or st.session_state.get('current_user', '')
+    if usuario == 'Adm':
+        return True
+    try:
+        auth = load_auth_data()
+        return bool(auth.get('users', {}).get(usuario, {}).get('is_admin', False))
+    except Exception:
+        return False
 
 
 def save_auth_data(data):
@@ -497,8 +526,29 @@ def init_files():
         write_csv_rows(INGRESSOS_PATH, INGRESSOS_COLUMNS, [])
 
 
-def load_mesas():
+def get_total_tables():
+    cfg = load_config()
+    try:
+        return max(1, min(200, int(cfg.get('total_tables', 100))))
+    except Exception:
+        return 100
+
+
+def load_all_mesas():
     return read_csv_rows(MESAS_PATH, MESAS_COLUMNS)
+
+
+def load_mesas():
+    total = get_total_tables()
+    rows = read_csv_rows(MESAS_PATH, MESAS_COLUMNS)
+    active = []
+    for row in rows:
+        try:
+            if int(row.get('mesa', 0)) <= total:
+                active.append(row)
+        except Exception:
+            pass
+    return active
 
 
 def save_mesas(rows):
@@ -544,8 +594,22 @@ def status_color(status):
 
 def load_table_coordinates():
     if MAP_COORDS_PATH.exists():
-        return json.loads(MAP_COORDS_PATH.read_text(encoding='utf-8'))
-    return []
+        coords = json.loads(MAP_COORDS_PATH.read_text(encoding='utf-8'))
+    else:
+        coords = []
+
+    total = get_total_tables() if 'get_total_tables' in globals() else 100
+    existentes = {int(c.get('mesa', 0)) for c in coords if str(c.get('mesa', '')).isdigit()}
+    if len(existentes) < total:
+        # cria coordenadas extras simples caso o Adm aumente acima das coordenadas existentes
+        start_x, start_y = 900, 400
+        step_x, step_y = 90, 90
+        for n in range(1, total + 1):
+            if n not in existentes:
+                idx = n - 1
+                coords.append({'mesa': n, 'x': start_x + (idx % 10) * step_x, 'y': start_y + (idx // 10) * step_y})
+        MAP_COORDS_PATH.write_text(json.dumps(coords, ensure_ascii=False, indent=2), encoding='utf-8')
+    return coords
 
 
 
@@ -579,8 +643,12 @@ def generate_quadra_map(mesas, show_coord_labels=False):
     radius = int(cfg.get("map_table_radius", 22))
     chair_size = max(5, int(radius * 0.34))
 
+    total_tables = get_total_tables()
+
     for item in coords:
         num = int(item["mesa"])
+        if num > total_tables:
+            continue
         x = int(item["x"])
         y = int(item["y"])
         mesa = mesa_by_num.get(num, {"status": "Disponível"})
@@ -627,7 +695,7 @@ def generate_quadra_map(mesas, show_coord_labels=False):
     return bio.getvalue()
 
 def salvar_mesa(payload, gratuidade=False):
-    mesas = load_mesas()
+    mesas = load_all_mesas()
     for mesa in mesas:
         if mesa['mesa'] == str(payload['mesa_numero']):
             if gratuidade:
@@ -803,7 +871,7 @@ def header():
 
 def menu():
     opcoes = ['Dashboard','Mesas','Ingressos','Relatórios']
-    if st.session_state.current_user == 'Adm':
+    if is_admin_user(st.session_state.current_user):
         opcoes.append('Painel Master')
     return st.radio('Menu', opcoes, horizontal=True, label_visibility='collapsed')
 
@@ -871,7 +939,7 @@ def page_mesas():
     show_zoomable_image(generate_quadra_map(mesas), zoom_percent=zoom_mapa)
     st.markdown('</div>', unsafe_allow_html=True)
     st.caption('Verde = disponível - Amarelo = reservada - Vermelho = vendida - Roxo = gratuidade - Cinza = cancelada')
-    for inicio in range(0, 100, 10):
+    for inicio in range(0, len(mesas), 10):
         cols = st.columns(10)
         for i, col in enumerate(cols):
             idx = inicio + i
@@ -1066,8 +1134,12 @@ def build_canvas_editor_background(mesas, selected_set=None, max_width=1100, map
     cfg = load_config()
     radius = int(cfg.get("map_table_radius", 22))
 
+    total_tables = get_total_tables()
+
     for item in coords:
         num = int(item["mesa"])
+        if num > total_tables:
+            continue
         x = int(item["x"]) / scale_x
         y = int(item["y"]) / scale_y
         status = mesas_status.get(num, "Disponível")
@@ -1385,8 +1457,8 @@ def dialog_editor_bloco():
 
 
 def page_master():
-    if st.session_state.get("current_user") != "Adm":
-        st.error("Acesso negado ao Painel Master. Apenas o usuário Adm pode alterar mapa, imagens e aparência.")
+    if not is_admin_user(st.session_state.get("current_user")):
+        st.error("Acesso negado ao Painel Master. Apenas usuários administradores podem alterar mapa, usuários, imagens e aparência.")
         return
 
     st.subheader("🛠️ Painel Master")
@@ -1394,7 +1466,7 @@ def page_master():
 
     cfg = load_config()
 
-    aba1, aba2, aba3, aba4, aba5 = st.tabs(["Aparência", "Imagens", "Mapa das mesas", "Editor visual", "Posição individual"])
+    aba1, aba2, aba3, aba4, aba5, aba6 = st.tabs(["Aparência", "Imagens", "Mapa das mesas", "Editor visual", "Posição individual", "Usuários e mesas"])
 
     with aba1:
         st.markdown("### Aparência do sistema")
@@ -1748,6 +1820,154 @@ def page_master():
             st.markdown("### Prévia atualizada")
             zoom_edit = st.slider("Zoom da prévia de edição (%)", 50, 300, int(load_config().get("map_zoom", 100)), key="zoom_preview_master_edicao_individual")
             show_zoomable_image(generate_quadra_map(load_mesas(), show_coord_labels=True), zoom_percent=zoom_edit)
+
+
+    with aba6:
+        st.markdown("### Usuários do sistema")
+        auth = load_auth_data()
+        usuarios = auth.get("users", {})
+
+        st.markdown("#### Criar novo usuário")
+        with st.form("form_criar_usuario"):
+            c1, c2 = st.columns(2)
+            with c1:
+                novo_usuario = st.text_input("Nome do usuário", placeholder="Ex.: Secretaria Maria")
+                nova_senha = st.text_input("Senha inicial", type="password")
+            with c2:
+                repetir_senha = st.text_input("Repetir senha", type="password")
+                novo_admin = st.checkbox("Permitir acesso ao Painel Master", value=False)
+            criar_usuario = st.form_submit_button("Criar usuário", use_container_width=True)
+
+        if criar_usuario:
+            nome = novo_usuario.strip()
+            if not nome:
+                st.error("Informe o nome do usuário.")
+            elif nome in usuarios:
+                st.error("Esse usuário já existe.")
+            elif len(nova_senha) < 4:
+                st.error("A senha precisa ter pelo menos 4 caracteres.")
+            elif nova_senha != repetir_senha:
+                st.error("As senhas não coincidem.")
+            else:
+                usuarios[nome] = {
+                    "password_hash": hash_password(nova_senha),
+                    "is_admin": bool(novo_admin)
+                }
+                save_auth_data(auth)
+                st.success(f"Usuário {nome} criado com sucesso.")
+                st.rerun()
+
+        st.markdown("#### Usuários cadastrados")
+        for nome in sorted(list(usuarios.keys())):
+            info = usuarios[nome]
+            col_nome, col_admin, col_reset, col_del = st.columns([2, 1, 1, 1])
+            with col_nome:
+                st.write(f"**{nome}**")
+            with col_admin:
+                admin_atual = bool(info.get("is_admin", nome == "Adm"))
+                novo_valor = st.checkbox("Admin", value=admin_atual, key=f"admin_{nome}", disabled=(nome == "Adm"))
+                if nome != "Adm" and novo_valor != admin_atual:
+                    usuarios[nome]["is_admin"] = bool(novo_valor)
+                    save_auth_data(auth)
+                    st.rerun()
+            with col_reset:
+                with st.expander("Senha"):
+                    senha_reset = st.text_input("Nova senha", type="password", key=f"senha_reset_{nome}")
+                    if st.button("Salvar senha", key=f"btn_senha_{nome}", use_container_width=True):
+                        if len(senha_reset) < 4:
+                            st.error("Senha muito curta.")
+                        else:
+                            usuarios[nome]["password_hash"] = hash_password(senha_reset)
+                            save_auth_data(auth)
+                            st.success("Senha atualizada.")
+                            st.rerun()
+            with col_del:
+                if nome != "Adm":
+                    if st.button("Excluir", key=f"del_user_{nome}", use_container_width=True):
+                        usuarios.pop(nome, None)
+                        save_auth_data(auth)
+                        st.success(f"Usuário {nome} excluído.")
+                        st.rerun()
+
+        st.download_button(
+            "Baixar users.json",
+            json.dumps(auth, ensure_ascii=False, indent=2).encode("utf-8"),
+            file_name="users.json",
+            mime="application/json",
+            use_container_width=True
+        )
+
+        st.markdown("---")
+        st.markdown("### Quantidade de mesas ativas")
+        cfg = load_config()
+        total_atual = get_total_tables()
+        todas_mesas = load_all_mesas()
+
+        st.info(
+            "Diminuir o número de mesas apenas oculta as mesas acima do limite. "
+            "Os dados antigos não são apagados; se você aumentar novamente, elas voltam."
+        )
+
+        novo_total = st.number_input(
+            "Número de mesas ativas",
+            min_value=1,
+            max_value=200,
+            value=int(total_atual),
+            step=1
+        )
+
+        vendidas_acima = []
+        for m in todas_mesas:
+            try:
+                if int(m.get("mesa", 0)) > int(novo_total) and m.get("status") in ["Vendida", "Reservada", "Gratuidade"]:
+                    vendidas_acima.append(m)
+            except Exception:
+                pass
+
+        if vendidas_acima:
+            st.warning(
+                f"Existem {len(vendidas_acima)} mesas acima do novo limite com status Vendida/Reservada/Gratuidade. "
+                "Elas ficarão ocultas no sistema enquanto o limite estiver menor."
+            )
+
+        if st.button("Salvar quantidade de mesas", use_container_width=True):
+            cfg["total_tables"] = int(novo_total)
+            save_config(cfg)
+
+            # Garante que o CSV tenha linhas até o novo total se aumentar.
+            rows = load_all_mesas()
+            existentes = {int(r["mesa"]) for r in rows if str(r.get("mesa", "")).isdigit()}
+            for i in range(1, int(novo_total) + 1):
+                if i not in existentes:
+                    rows.append({
+                        'mesa': str(i),
+                        'status': 'Disponível',
+                        'comprador': '',
+                        'telefone': '',
+                        'vendedor': '',
+                        'pagamento': '',
+                        'valor': str(VALOR_MESA),
+                        'data_hora': '',
+                        'observacao': ''
+                    })
+            rows = sorted(rows, key=lambda r: int(r["mesa"]) if str(r.get("mesa", "")).isdigit() else 999999)
+            save_mesas(rows)
+            refresh_data()
+            st.success(f"Quantidade de mesas ativas salva: {int(novo_total)}.")
+            st.rerun()
+
+        st.download_button(
+            "Baixar config.json atualizado",
+            json.dumps(load_config(), ensure_ascii=False, indent=2).encode("utf-8"),
+            file_name="config.json",
+            mime="application/json",
+            use_container_width=True
+        )
+
+        st.caption(
+            "Para manter usuários e número de mesas após Reboot/redeploy no Streamlit Cloud, "
+            "baixe users.json/config.json e substitua os arquivos correspondentes na pasta data do GitHub."
+        )
 
 
 init_files()

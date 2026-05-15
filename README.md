@@ -232,3 +232,17 @@ Para tornar uma nova aparência permanente:
 A versão `streamlit-drawable-canvas==0.9.3` não funcionou bem com `background_image`
 no Streamlit 1.57. O fundo do editor agora é inserido como um objeto de imagem
 travado dentro do próprio canvas, evitando o erro `background_image_url`.
+
+
+## Atualização: usuários e quantidade de mesas
+
+No Painel Master foi adicionada a aba `Usuários e mesas`.
+
+Recursos:
+- criar novo usuário com senha inicial;
+- permitir ou não acesso ao Painel Master;
+- redefinir senha de usuário;
+- excluir usuários não-Adm;
+- diminuir/aumentar a quantidade de mesas ativas;
+- mesas acima do limite ficam ocultas, mas os dados não são apagados;
+- baixar `users.json` e `config.json` para persistir alterações no GitHub.
