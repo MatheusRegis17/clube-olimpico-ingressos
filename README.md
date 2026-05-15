@@ -43,10 +43,8 @@ Use o botão **Trocar usuário** se quiser entrar com outro cadastro.
 Main file path: `app.py`
 
 
-## Login corrigido
-
-Se o Streamlit perder o arquivo de senhas, o usuário agora pode clicar em:
-
-`Entrar direto sem senha`
-
-Depois, se quiser, pode criar/redefinir a senha pelo expansor da tela de login.
+## Redesign da entrada
+- tela de login refeita
+- logo central maior
+- visual mais limpo
+- entrada direta com senha do último usuário
