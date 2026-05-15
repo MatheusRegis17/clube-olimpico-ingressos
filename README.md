@@ -48,3 +48,10 @@ Main file path: `app.py`
 - logo central maior
 - visual mais limpo
 - entrada direta com senha do último usuário
+
+
+## Ajuste adicional da entrada
+- card mais centralizado
+- elementos internos centralizados
+- logo maior
+- visual mais estilizado

@@ -48,10 +48,11 @@ st.markdown("""
     box-shadow: 0 18px 42px rgba(0,0,0,0.24);
 }
 .login-card {
-    max-width: 760px;
-    margin: 0 auto;
-    border-radius: 28px;
-    padding: 34px 34px 28px 34px;
+    max-width: 860px;
+    margin: 28px auto 0 auto;
+    border-radius: 32px;
+    padding: 38px 46px 34px 46px;
+    backdrop-filter: blur(8px);
 }
 .hero {
     border-radius: 24px;
@@ -88,6 +89,41 @@ st.markdown("""
     color: #c7d2fe;
     margin-bottom: 22px;
 }
+.login-inner {
+    max-width: 560px;
+    margin: 0 auto;
+}
+.section-kicker {
+    text-align: center;
+    color: #f8fafc;
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    opacity: 0.75;
+    margin-bottom: 6px;
+}
+.brand-strip {
+    max-width: 560px;
+}
+.login-card div[data-testid="stSelectbox"],
+.login-card div[data-testid="stTextInput"],
+.login-card div[data-testid="stAlert"],
+.login-card div[data-testid="stExpander"],
+.login-card div[data-testid="stButton"] {
+    max-width: 560px;
+    margin-left: auto;
+    margin-right: auto;
+}
+.login-card .stButton > button {
+    min-height: 48px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,0.16);
+    background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+}
+.login-card .stButton > button:hover {
+    border-color: rgba(255,255,255,0.28);
+}
+
 .logo-wrap {
     display: flex;
     justify-content: center;
@@ -342,16 +378,15 @@ def login_screen():
     user_list = list(users.keys())
     default_user = last_user if last_user in user_list else user_list[0]
 
-    left_space, center_col, right_space = st.columns([1, 1.6, 1])
-
-    with center_col:
+    with st.container():
         st.markdown('<div class="login-card">', unsafe_allow_html=True)
 
-        st.markdown('<div class="logo-wrap">', unsafe_allow_html=True)
-        show_image(LOGO_CLUBE_PATH, width=140)
-        st.markdown('</div>', unsafe_allow_html=True)
+        logo_left, logo_center, logo_right = st.columns([1, 1, 1])
+        with logo_center:
+            show_image(LOGO_CLUBE_PATH, width=170)
 
         st.markdown(
+            '<div class="section-kicker">Clube Olímpico de Jacarepaguá</div>'
             '<div class="login-title">Clube Olímpico Ingressos</div>'
             '<div class="login-subtitle">Controle de mesas e ingressos • Festa Junina 2026</div>',
             unsafe_allow_html=True
@@ -360,10 +395,12 @@ def login_screen():
         st.markdown(
             '<div class="brand-strip">'
             '<p class="brand-title">Acesso ao sistema</p>'
-            '<div class="brand-subtitle">Entre com o usuário já cadastrado ou escolha outro acesso</div>'
+            '<div class="brand-subtitle">Entre com seu usuário ou escolha outro acesso</div>'
             '</div>',
             unsafe_allow_html=True
         )
+
+        st.markdown('<div class="login-inner">', unsafe_allow_html=True)
 
         if last_user and not st.session_state.force_switch_user:
             usuario = last_user
@@ -383,14 +420,13 @@ def login_screen():
                 else:
                     st.error("Senha incorreta.")
 
-            if st.button("Trocar usuário", use_container_width=True):
-                st.session_state.force_switch_user = True
+            st.button("Trocar usuário", key="trocar_usuario_login", use_container_width=True, on_click=lambda: st.session_state.update({'force_switch_user': True}))
+            if st.session_state.force_switch_user:
                 st.rerun()
 
         else:
             idx = user_list.index(default_user) if default_user in user_list else 0
             usuario = st.selectbox("Selecione seu acesso", user_list, index=idx)
-
             tem_senha = bool(users[usuario].get('password_hash',''))
 
             if tem_senha:
@@ -411,8 +447,7 @@ def login_screen():
             else:
                 st.warning("Esse usuário está sem senha salva neste servidor.")
 
-                col_a, col_b = st.columns(2)
-                if col_a.button("Entrar direto sem senha", use_container_width=True):
+                if st.button("Entrar direto sem senha", use_container_width=True):
                     st.session_state.logged_in = True
                     st.session_state.current_user = usuario
                     auth['meta']['last_user'] = usuario
@@ -437,6 +472,7 @@ def login_screen():
                             st.success("Senha salva. Agora você pode entrar.")
                             st.rerun()
 
+        st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
 def sidebar():
