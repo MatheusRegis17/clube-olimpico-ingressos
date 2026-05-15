@@ -35,7 +35,7 @@ INGRESSOS_COLUMNS = ["comprador","telefone","quantidade","vendedor","pagamento",
 
 def default_config():
     return {
-        "background_opacity": 58,
+        "background_opacity": 42,
         "background_position": "center center",
         "background_blur": 0,
         "primary_color": "#2f6bff",
@@ -83,43 +83,53 @@ def image_data_uri(path):
 
 
 def inject_background():
-    """Injeta o fundo por HTML fixo. Isso é mais estável no Streamlit Cloud do que usar url() gigante no CSS."""
+    """Aplica o fundo nos containers corretos do Streamlit Cloud."""
     cfg = load_config()
     bg_uri_local = image_data_uri(BACKGROUND_PATH)
     if not bg_uri_local:
         return
 
-    opacity = max(0, min(95, int(cfg.get("background_opacity", 58)))) / 100
+    opacity = max(0, min(95, int(cfg.get("background_opacity", 42)))) / 100
     blur = max(0, min(20, int(cfg.get("background_blur", 0))))
     position = cfg.get("background_position", "center center")
 
+    # Usamos múltiplos seletores porque o Streamlit muda a estrutura entre versões.
     st.markdown(
         f"""
         <style>
-        .coj-bg {{
-            position: fixed;
-            inset: 0;
-            z-index: -999999;
+        [data-testid="stAppViewContainer"],
+        .stApp {{
             background-image:
-                linear-gradient(rgba(4,10,20,{opacity}), rgba(4,10,20,{min(0.94, opacity + 0.06)})),
-                url("{bg_uri_local}");
-            background-size: cover;
-            background-position: {position};
-            background-repeat: no-repeat;
-            filter: blur({blur}px);
-            transform: scale(1.02);
+                linear-gradient(rgba(4,10,20,{opacity}), rgba(4,10,20,{min(0.88, opacity + 0.10)})),
+                url("{bg_uri_local}") !important;
+            background-size: cover !important;
+            background-position: {position} !important;
+            background-repeat: no-repeat !important;
+            background-attachment: fixed !important;
         }}
-        [data-testid="stAppViewContainer"] {{
-            background: transparent !important;
-        }}
+
         [data-testid="stAppViewContainer"] > .main {{
             background: transparent !important;
         }}
-        .stApp {{
+
+        [data-testid="stHeader"] {{
             background: transparent !important;
         }}
+
+        .block-container {{
+            position: relative;
+            z-index: 2;
+        }}
+
+        .coj-bg-filter {{
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            backdrop-filter: blur({blur}px);
+        }}
         </style>
-        <div class="coj-bg"></div>
+        <div class="coj-bg-filter"></div>
         """,
         unsafe_allow_html=True,
     )
@@ -127,7 +137,7 @@ def inject_background():
 
 config = load_config()
 bg_uri = image_data_uri(BACKGROUND_PATH)
-bg_alpha = max(0, min(95, int(config.get("background_opacity", 76)))) / 100
+bg_alpha = max(0, min(95, int(config.get("background_opacity", 42)))) / 100
 bg_blur = max(0, min(20, int(config.get("background_blur", 0))))
 primary_color = config.get("primary_color", "#2f6bff")
 card_alpha = max(20, min(98, int(config.get("card_opacity", 90)))) / 100
@@ -137,7 +147,7 @@ bg_position = config.get("background_position", "center center")
 st.markdown(f"""
 <style>
 .stApp {{
-    background: transparent !important;
+    background-color: #07111f !important;
 }}
 .stApp::before {{
     content: "";
@@ -898,7 +908,7 @@ def save_uploaded_image(uploaded_file, target_path):
 
 
 def map_preview_with_selected(mesas, selected_mesa=None):
-    """Preview do mapa para edição, destacando a mesa selecionada."""
+    """Preview do mapa para edição, destacando a mesa selecionada. Retorna PIL Image."""
     image_bytes = generate_quadra_map(mesas, show_coord_labels=True)
     img = Image.open(BytesIO(image_bytes)).convert("RGBA")
 
@@ -911,9 +921,7 @@ def map_preview_with_selected(mesas, selected_mesa=None):
             draw.ellipse((x-42, y-42, x+42, y+42), outline="#ffff00", width=6)
             draw.ellipse((x-49, y-49, x+49, y+49), outline="#111827", width=3)
 
-    bio = BytesIO()
-    img.save(bio, format="PNG")
-    return bio.getvalue()
+    return img
 
 
 def page_master():
@@ -992,7 +1000,7 @@ def page_master():
 
         with col1:
             st.markdown("**Fundo do sistema**")
-            st.caption("Depois de salvar, a página recarrega e o fundo já deve aparecer.")
+            st.caption("Depois de salvar, o app recarrega automaticamente. Se necessário, use F5 no navegador.")
             bg = st.file_uploader("Enviar novo fundo", type=["png", "jpg", "jpeg"], key="upload_bg")
             if st.button("Salvar novo fundo", use_container_width=True):
                 if save_uploaded_image(bg, BACKGROUND_PATH):
@@ -1073,15 +1081,13 @@ def page_master():
                 passo = st.number_input("Passo dos botões", value=10, min_value=1, max_value=100)
 
             st.markdown("#### Clique no mapa para mover a mesa selecionada")
+            preview_img = map_preview_with_selected(load_mesas(), mesa_sel)
             click = streamlit_image_coordinates(
-                map_preview_with_selected(load_mesas(), mesa_sel),
+                preview_img,
                 key=f"map_click_{mesa_sel}",
-                use_column_width=True,
             )
 
             if click is not None:
-                # streamlit-image-coordinates retorna coordenadas na imagem exibida.
-                # Para garantir proporção correta, usamos a imagem original gerada e a dimensão retornada pelo componente.
                 x_click = int(click.get("x", item["x"]))
                 y_click = int(click.get("y", item["y"]))
 

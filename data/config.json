@@ -1,0 +1,10 @@
+{
+  "background_opacity": 42,
+  "background_position": "center center",
+  "background_blur": 0,
+  "primary_color": "#2f6bff",
+  "card_opacity": 88,
+  "map_table_width": 32,
+  "map_table_height": 20,
+  "map_table_radius": 22
+}
