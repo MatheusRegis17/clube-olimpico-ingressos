@@ -1002,12 +1002,12 @@ def map_preview_with_selected(mesas, selected_mesa=None, max_width=1050):
 
 def build_canvas_editor_background(mesas, selected_set=None, max_width=1100, map_opacity=48):
     """
-    Cria uma imagem leve para o editor visual.
+    Cria a imagem de fundo do editor visual e os objetos arrastáveis.
 
-    Novo padrão:
-    - fundo preto
-    - planta da quadra por cima com transparência
-    - mesas como objetos arrastáveis
+    Correção:
+    O fundo agora é passado pelo parâmetro background_image do st_canvas,
+    em vez de tentar usar "background" dentro do initial_drawing.
+    Isso faz o editor aparecer corretamente no Streamlit Cloud.
     """
     selected_set = selected_set or set()
     map_opacity = max(10, min(100, int(map_opacity)))
@@ -1031,16 +1031,12 @@ def build_canvas_editor_background(mesas, selected_set=None, max_width=1100, map
         scale_y = 1.0
         map_small = base_original
 
-    # fundo preto + mapa transparente
+    # Fundo preto + planta transparente
     black_bg = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 255))
     alpha = map_small.getchannel("A")
     alpha = alpha.point(lambda p: int(p * (map_opacity / 100)))
     map_small.putalpha(alpha)
-    editor_bg = Image.alpha_composite(black_bg, map_small)
-
-    bio = BytesIO()
-    editor_bg.save(bio, format="PNG")
-    data_uri = "data:image/png;base64," + base64.b64encode(bio.getvalue()).decode("ascii")
+    editor_bg = Image.alpha_composite(black_bg, map_small).convert("RGB")
 
     coords = load_table_coordinates()
     mesas_status = {int(m["mesa"]): m.get("status", "Disponível") for m in mesas if str(m.get("mesa", "")).isdigit()}
@@ -1086,7 +1082,7 @@ def build_canvas_editor_background(mesas, selected_set=None, max_width=1100, map
             "evented": False,
         })
 
-    return data_uri, canvas_w, canvas_h, scale_x, scale_y, objects
+    return editor_bg, canvas_w, canvas_h, scale_x, scale_y, objects
 
 
 def canvas_positions_signature(canvas_json, scale_x, scale_y):
@@ -1607,7 +1603,7 @@ def page_master():
                     help="Para evitar travamentos/idas e voltas, deixe desligado e use o botão salvar. Ligue apenas se estiver funcionando leve."
                 )
 
-            bg_uri, canvas_w, canvas_h, scale_x, scale_y, objects = build_canvas_editor_background(
+            editor_bg, canvas_w, canvas_h, scale_x, scale_y, objects = build_canvas_editor_background(
                 mesas,
                 selected_set=selected_set,
                 max_width=editor_width,
@@ -1616,7 +1612,6 @@ def page_master():
 
             initial_drawing = {
                 "version": "4.4.0",
-                "background": bg_uri,
                 "objects": objects,
             }
 
@@ -1626,18 +1621,23 @@ def page_master():
             if st.session_state.get(last_sig_key) in ("", None):
                 st.session_state[last_sig_key] = saved_sig
 
+            st.markdown("#### Área de edição")
+            st.caption("Se a área abaixo aparecer vazia, clique em 'Recarregar editor'.")
+            canvas_key = f"editor_visual_mesas_{st.session_state.get('editor_visual_nonce', 0)}"
+
             canvas_result = st_canvas(
                 fill_color="rgba(255, 243, 215, 0.85)",
                 stroke_width=2,
                 stroke_color="#111827",
-                background_color="rgba(0,0,0,0)",
+                background_color="#000000",
+                background_image=editor_bg,
                 height=canvas_h,
                 width=canvas_w,
                 drawing_mode="transform",
                 initial_drawing=initial_drawing,
                 update_streamlit=True,
                 display_toolbar=False,
-                key="editor_visual_mesas",
+                key=canvas_key,
             )
 
             current_sig = canvas_positions_signature(canvas_result.json_data, scale_x, scale_y) if canvas_result.json_data else ""
@@ -1658,6 +1658,7 @@ def page_master():
             with col_reset:
                 if st.button("🔄 Recarregar editor a partir do mapa salvo", use_container_width=True):
                     st.session_state[last_sig_key] = ""
+                    st.session_state["editor_visual_nonce"] = st.session_state.get("editor_visual_nonce", 0) + 1
                     st.rerun()
 
             st.caption(

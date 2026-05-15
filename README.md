@@ -218,3 +218,10 @@ Para tornar uma nova aparência permanente:
 2. clique em `Salvar aparência`;
 3. baixe o `config.json`;
 4. substitua `data/config.json` no GitHub.
+
+
+## Correção: editor visual aparecendo
+
+- O fundo do editor visual agora usa `background_image=editor_bg` diretamente no `st_canvas`.
+- Removido o uso de `background` dentro do `initial_drawing`, que podia fazer o canvas não aparecer no Streamlit Cloud.
+- O botão `Recarregar editor` agora força a recriação do componente.
