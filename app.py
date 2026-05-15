@@ -35,7 +35,7 @@ INGRESSOS_COLUMNS = ["comprador","telefone","quantidade","vendedor","pagamento",
 
 def default_config():
     return {
-        "background_opacity": 42,
+        "background_opacity": 38,
         "background_position": "center center",
         "background_blur": 0,
         "primary_color": "#2f6bff",
@@ -83,53 +83,69 @@ def image_data_uri(path):
 
 
 def inject_background():
-    """Aplica o fundo nos containers corretos do Streamlit Cloud."""
+    """Aplica a imagem de fundo usando uma tag <img> fixa atrás do app."""
     cfg = load_config()
     bg_uri_local = image_data_uri(BACKGROUND_PATH)
     if not bg_uri_local:
         return
 
-    opacity = max(0, min(95, int(cfg.get("background_opacity", 42)))) / 100
+    opacity = max(0, min(95, int(cfg.get("background_opacity", 38)))) / 100
     blur = max(0, min(20, int(cfg.get("background_blur", 0))))
     position = cfg.get("background_position", "center center")
 
-    # Usamos múltiplos seletores porque o Streamlit muda a estrutura entre versões.
+    # CSS object-position usa a mesma sintaxe do background-position.
+    # A imagem fica atrás de todo o app, com pointer-events none.
     st.markdown(
         f"""
         <style>
+        .coj-fixed-bg {{
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            object-position: {position};
+            z-index: 0;
+            pointer-events: none;
+            filter: blur({blur}px);
+            transform: scale(1.02);
+        }}
+        .coj-bg-overlay {{
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background:
+                linear-gradient(
+                    rgba(4,10,20,{opacity}),
+                    rgba(4,10,20,{min(0.88, opacity + 0.10)})
+                );
+        }}
+
         [data-testid="stAppViewContainer"],
         .stApp {{
-            background-image:
-                linear-gradient(rgba(4,10,20,{opacity}), rgba(4,10,20,{min(0.88, opacity + 0.10)})),
-                url("{bg_uri_local}") !important;
-            background-size: cover !important;
-            background-position: {position} !important;
-            background-repeat: no-repeat !important;
-            background-attachment: fixed !important;
-        }}
-
-        [data-testid="stAppViewContainer"] > .main {{
             background: transparent !important;
         }}
 
-        [data-testid="stHeader"] {{
-            background: transparent !important;
-        }}
-
+        [data-testid="stAppViewContainer"] > .main,
         .block-container {{
             position: relative;
             z-index: 2;
         }}
 
-        .coj-bg-filter {{
-            position: fixed;
-            inset: 0;
-            pointer-events: none;
-            z-index: 0;
-            backdrop-filter: blur({blur}px);
+        [data-testid="stHeader"] {{
+            background: transparent !important;
+            z-index: 3;
+        }}
+
+        section[data-testid="stSidebar"] {{
+            position: relative;
+            z-index: 4;
         }}
         </style>
-        <div class="coj-bg-filter"></div>
+
+        <img class="coj-fixed-bg" src="{bg_uri_local}" />
+        <div class="coj-bg-overlay"></div>
         """,
         unsafe_allow_html=True,
     )
@@ -137,7 +153,7 @@ def inject_background():
 
 config = load_config()
 bg_uri = image_data_uri(BACKGROUND_PATH)
-bg_alpha = max(0, min(95, int(config.get("background_opacity", 42)))) / 100
+bg_alpha = max(0, min(95, int(config.get("background_opacity", 38)))) / 100
 bg_blur = max(0, min(20, int(config.get("background_blur", 0))))
 primary_color = config.get("primary_color", "#2f6bff")
 card_alpha = max(20, min(98, int(config.get("card_opacity", 90)))) / 100
@@ -147,7 +163,7 @@ bg_position = config.get("background_position", "center center")
 st.markdown(f"""
 <style>
 .stApp {{
-    background-color: #07111f !important;
+    background: transparent !important;
 }}
 .stApp::before {{
     content: "";
@@ -907,8 +923,11 @@ def save_uploaded_image(uploaded_file, target_path):
     return True
 
 
-def map_preview_with_selected(mesas, selected_mesa=None):
-    """Preview do mapa para edição, destacando a mesa selecionada. Retorna PIL Image."""
+def map_preview_with_selected(mesas, selected_mesa=None, max_width=1050):
+    """
+    Preview leve para edição.
+    Retorna (PIL Image redimensionada, escala_x, escala_y).
+    """
     image_bytes = generate_quadra_map(mesas, show_coord_labels=True)
     img = Image.open(BytesIO(image_bytes)).convert("RGBA")
 
@@ -921,7 +940,16 @@ def map_preview_with_selected(mesas, selected_mesa=None):
             draw.ellipse((x-42, y-42, x+42, y+42), outline="#ffff00", width=6)
             draw.ellipse((x-49, y-49, x+49, y+49), outline="#111827", width=3)
 
-    return img
+    original_w, original_h = img.size
+    if original_w > max_width:
+        new_w = max_width
+        new_h = int(original_h * (new_w / original_w))
+        img_small = img.resize((new_w, new_h))
+        scale_x = original_w / new_w
+        scale_y = original_h / new_h
+        return img_small, scale_x, scale_y
+
+    return img, 1.0, 1.0
 
 
 def page_master():
@@ -1061,7 +1089,7 @@ def page_master():
         st.markdown("### Ajustar mesa com o mouse")
         st.info(
             "Escolha a mesa e clique no ponto desejado do mapa. "
-            "O sistema salva a posição automaticamente e atualiza o mapa de mesas."
+            "A prévia foi reduzida para ficar mais rápida, mas o sistema salva na coordenada correta do mapa original."
         )
 
         coords = load_table_coordinates()
@@ -1081,15 +1109,15 @@ def page_master():
                 passo = st.number_input("Passo dos botões", value=10, min_value=1, max_value=100)
 
             st.markdown("#### Clique no mapa para mover a mesa selecionada")
-            preview_img = map_preview_with_selected(load_mesas(), mesa_sel)
+            preview_img, scale_x, scale_y = map_preview_with_selected(load_mesas(), mesa_sel)
             click = streamlit_image_coordinates(
                 preview_img,
                 key=f"map_click_{mesa_sel}",
             )
 
             if click is not None:
-                x_click = int(click.get("x", item["x"]))
-                y_click = int(click.get("y", item["y"]))
+                x_click = int(click.get("x", item["x"]) * scale_x)
+                y_click = int(click.get("y", item["y"]) * scale_y)
 
                 for i in coords:
                     if int(i["mesa"]) == int(mesa_sel):
