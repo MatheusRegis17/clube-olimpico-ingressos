@@ -200,3 +200,21 @@ Ela permite:
 - Foi adicionado controle de transparência da planta no editor.
 - O salvamento automático foi corrigido para salvar quando a posição do canvas muda em relação ao mapa salvo.
 - Se o editor ficar pesado, desmarque `Salvar automaticamente ao soltar mesas` e use `Salvar posições agora`.
+
+
+## Correção final do Editor Visual
+
+- Corrigida a função ausente `canvas_positions_signature`.
+- O salvamento automático agora vem desligado por padrão para evitar o bug de ficar indo e voltando.
+- Use `Salvar posições agora` após arrastar as mesas.
+- O editor continua com fundo preto e planta da quadra transparente.
+
+## Aparência permanente
+
+O pacote agora já vem com uma aparência padrão salva em `data/config.json`.
+No Streamlit Cloud, alterações feitas em arquivos durante a execução podem se perder após Reboot/redeploy.
+Para tornar uma nova aparência permanente:
+1. ajuste a aparência no Painel Master;
+2. clique em `Salvar aparência`;
+3. baixe o `config.json`;
+4. substitua `data/config.json` no GitHub.

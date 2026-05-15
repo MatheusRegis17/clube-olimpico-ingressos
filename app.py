@@ -37,9 +37,9 @@ INGRESSOS_COLUMNS = ["comprador","telefone","quantidade","vendedor","pagamento",
 
 def default_config():
     return {
-        "background_opacity": 30,
+        "background_opacity": 48,
         "background_position": "center center",
-        "background_blur": 0,
+        "background_blur": 6,
         "primary_color": "#2f6bff",
         "card_opacity": 90,
         "map_table_width": 32,
@@ -1089,6 +1089,27 @@ def build_canvas_editor_background(mesas, selected_set=None, max_width=1100, map
     return data_uri, canvas_w, canvas_h, scale_x, scale_y, objects
 
 
+def canvas_positions_signature(canvas_json, scale_x, scale_y):
+    """Assinatura simples das posições atuais do canvas para detectar mudanças."""
+    if not canvas_json or "objects" not in canvas_json:
+        return ""
+
+    circles = [obj for obj in canvas_json.get("objects", []) if obj.get("type") == "circle"]
+    parts = []
+    for idx, obj in enumerate(circles):
+        try:
+            radius = float(obj.get("radius", 0))
+            left = float(obj.get("left", 0))
+            top = float(obj.get("top", 0))
+            center_x = int(round((left + radius) * scale_x))
+            center_y = int(round((top + radius) * scale_y))
+            mesa_num = obj.get("mesa_num", idx + 1)
+            parts.append(f"{mesa_num}:{center_x}:{center_y}")
+        except Exception:
+            pass
+    return "|".join(parts)
+
+
 def save_canvas_positions(canvas_json, scale_x, scale_y):
     """
     Salva posições de todas as mesas movimentadas no canvas.
@@ -1419,14 +1440,31 @@ def page_master():
                 value=cfg.get("primary_color", "#2f6bff")
             )
 
-        if st.button("Salvar aparência como padrão", use_container_width=True):
+        if st.button("Salvar aparência", use_container_width=True):
             save_config(cfg)
-            st.success("Aparência salva como padrão. Essas configurações serão usadas nas próximas entradas enquanto os arquivos do app forem preservados.")
+            st.success("Aparência salva para esta execução do app. Para deixar permanente após Reboot/redeploy do Streamlit, use o botão de baixar config e suba o arquivo em data/config.json no GitHub.")
             st.rerun()
 
-        with st.expander("Backup / restauração rápida da aparência"):
-            st.code(json.dumps(cfg, ensure_ascii=False, indent=2), language="json")
-            st.caption("Se algum dia o Streamlit reiniciar e perder arquivos internos, copie esse JSON para comparar ou restaurar manualmente.")
+        st.download_button(
+            "Baixar config.json da aparência",
+            json.dumps(cfg, ensure_ascii=False, indent=2).encode("utf-8"),
+            file_name="config.json",
+            mime="application/json",
+            use_container_width=True
+        )
+
+        with st.expander("Como deixar a aparência permanente após reiniciar"):
+            st.markdown("""
+            O Streamlit Cloud pode apagar alterações feitas em arquivos quando o app reinicia.
+
+            Para deixar permanente:
+            1. ajuste a aparência;
+            2. clique em **Salvar aparência**;
+            3. clique em **Baixar config.json da aparência**;
+            4. no GitHub, substitua o arquivo `data/config.json` por esse arquivo baixado.
+
+            Depois disso, mesmo com Reboot, o app abre com essa aparência.
+            """)
 
     with aba2:
         st.markdown("### Trocar imagens")
@@ -1565,8 +1603,8 @@ def page_master():
             with col_op2:
                 auto_save_editor = st.checkbox(
                     "Salvar automaticamente ao soltar mesas",
-                    value=True,
-                    help="Se bugar ou ficar pulando, desmarque e use o botão salvar."
+                    value=False,
+                    help="Para evitar travamentos/idas e voltas, deixe desligado e use o botão salvar. Ligue apenas se estiver funcionando leve."
                 )
 
             bg_uri, canvas_w, canvas_h, scale_x, scale_y, objects = build_canvas_editor_background(
@@ -1615,7 +1653,7 @@ def page_master():
                 if st.button("💾 Salvar posições agora", use_container_width=True):
                     moved = save_canvas_positions(canvas_result.json_data, scale_x, scale_y)
                     st.session_state[last_sig_key] = canvas_positions_signature(canvas_result.json_data, scale_x, scale_y)
-                    st.success(f"Posições salvas. Mesas alteradas: {moved}.")
+                    st.success(f"Posições salvas. Mesas alteradas: {moved}. O mapa principal já foi atualizado.")
                     st.rerun()
             with col_reset:
                 if st.button("🔄 Recarregar editor a partir do mapa salvo", use_container_width=True):

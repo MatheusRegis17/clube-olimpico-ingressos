@@ -1,9 +1,9 @@
 {
-  "background_opacity": 30,
+  "background_opacity": 48,
   "background_position": "center center",
-  "background_blur": 0,
+  "background_blur": 6,
   "primary_color": "#2f6bff",
-  "card_opacity": 88,
+  "card_opacity": 94,
   "map_table_width": 32,
   "map_table_height": 20,
   "map_table_radius": 22,
