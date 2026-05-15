@@ -462,6 +462,7 @@ def init_session():
 
 
 
+
 def login_screen():
     auth = load_auth_data()
     users = auth['users']
@@ -480,7 +481,10 @@ def login_screen():
         st.markdown('<div class="login-kicker">Sistema oficial do evento</div>', unsafe_allow_html=True)
         st.markdown('<div class="login-title-main">Clube Olímpico<br>Ingressos</div>', unsafe_allow_html=True)
         st.markdown(
-            '<div class="login-desc">Controle de mesas e ingressos da Festa Junina do Clube Olímpico de Jacarepaguá, com acesso simples e acompanhamento em tempo real.</div>',
+            '<div class="login-desc">'
+            'Controle de mesas e ingressos da Festa Junina do Clube Olímpico de Jacarepaguá, '
+            'com acesso identificado para cada vendedor.'
+            '</div>',
             unsafe_allow_html=True
         )
         st.markdown(
@@ -497,100 +501,48 @@ def login_screen():
     with right_col:
         st.markdown('<div class="login-card">', unsafe_allow_html=True)
         st.markdown('<div class="login-card-title">Acessar sistema</div>', unsafe_allow_html=True)
-        st.markdown('<div class="login-card-subtitle">Faça login para continuar</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-card-subtitle">Selecione seu usuário e digite sua senha</div>', unsafe_allow_html=True)
 
-        if last_user and not st.session_state.force_switch_user:
-            usuario = last_user
-            tem_senha = bool(users[usuario].get('password_hash',''))
-            st.markdown('<div class="login-note">Continuar como <strong>' + usuario + '</strong></div>', unsafe_allow_html=True)
+        idx = user_list.index(default_user) if default_user in user_list else 0
+        usuario = st.selectbox('Usuário', user_list, index=idx)
+        tem_senha = bool(users[usuario].get('password_hash',''))
 
-            if tem_senha:
-                with st.form('login_direto'):
-                    senha = st.text_input('Senha', type='password', placeholder='Digite sua senha')
-                    entrar = st.form_submit_button('Entrar', use_container_width=True)
-                if entrar:
-                    if hash_password(senha) == users[usuario]['password_hash']:
-                        st.session_state.logged_in = True
-                        st.session_state.current_user = usuario
-                        auth['meta']['last_user'] = usuario
-                        save_auth_data(auth)
-                        st.rerun()
-                    else:
-                        st.error('Senha incorreta.')
-            else:
-                st.warning('Esse usuário está sem senha salva neste servidor.')
-                if st.button('Entrar direto sem senha', key='direto_sem_senha_ultimo', use_container_width=True):
-                    st.session_state.logged_in = True
-                    st.session_state.current_user = usuario
-                    auth['meta']['last_user'] = usuario
-                    save_auth_data(auth)
-                    st.rerun()
-                with st.expander('Criar ou redefinir senha'):
-                    with st.form('criar_senha_direto'):
-                        senha_1 = st.text_input('Crie uma senha', type='password')
-                        senha_2 = st.text_input('Repita a senha', type='password')
-                        criar = st.form_submit_button('Salvar senha', use_container_width=True)
-                    if criar:
-                        if len(senha_1) < 4:
-                            st.error('A senha precisa ter pelo menos 4 caracteres.')
-                        elif senha_1 != senha_2:
-                            st.error('As senhas não coincidem.')
-                        else:
-                            users[usuario]['password_hash'] = hash_password(senha_1)
-                            auth['meta']['last_user'] = usuario
-                            save_auth_data(auth)
-                            st.success('Senha salva. Agora você pode entrar.')
-                            st.rerun()
+        if tem_senha:
+            with st.form('login_com_usuario_senha'):
+                senha = st.text_input('Senha', type='password', placeholder='Digite sua senha')
+                entrar = st.form_submit_button('Entrar', use_container_width=True)
 
-            st.markdown('<div class="login-divider"></div>', unsafe_allow_html=True)
-            if st.button('Trocar usuário', key='trocar_usuario_btn', use_container_width=True):
-                st.session_state.force_switch_user = True
-                st.rerun()
-
-        else:
-            idx = user_list.index(default_user) if default_user in user_list else 0
-            usuario = st.selectbox('Selecione seu acesso', user_list, index=idx)
-            tem_senha = bool(users[usuario].get('password_hash',''))
-
-            if tem_senha:
-                with st.form('login_escolhido'):
-                    senha = st.text_input('Senha', type='password', placeholder='Digite sua senha')
-                    entrar = st.form_submit_button('Entrar', use_container_width=True)
-                if entrar:
-                    if hash_password(senha) == users[usuario]['password_hash']:
-                        st.session_state.logged_in = True
-                        st.session_state.current_user = usuario
-                        auth['meta']['last_user'] = usuario
-                        save_auth_data(auth)
-                        st.session_state.force_switch_user = False
-                        st.rerun()
-                    else:
-                        st.error('Senha incorreta.')
-            else:
-                st.warning('Esse usuário está sem senha salva neste servidor.')
-                if st.button('Entrar direto sem senha', key='direto_sem_senha_escolhido', use_container_width=True):
+            if entrar:
+                if hash_password(senha) == users[usuario]['password_hash']:
                     st.session_state.logged_in = True
                     st.session_state.current_user = usuario
                     auth['meta']['last_user'] = usuario
                     save_auth_data(auth)
                     st.session_state.force_switch_user = False
                     st.rerun()
-                with st.expander('Criar ou redefinir senha'):
-                    with st.form('criar_senha'):
-                        senha_1 = st.text_input('Crie uma senha', type='password')
-                        senha_2 = st.text_input('Repita a senha', type='password')
-                        criar = st.form_submit_button('Salvar senha', use_container_width=True)
-                    if criar:
-                        if len(senha_1) < 4:
-                            st.error('A senha precisa ter pelo menos 4 caracteres.')
-                        elif senha_1 != senha_2:
-                            st.error('As senhas não coincidem.')
-                        else:
-                            users[usuario]['password_hash'] = hash_password(senha_1)
-                            auth['meta']['last_user'] = usuario
-                            save_auth_data(auth)
-                            st.success('Senha salva. Agora você pode entrar.')
-                            st.rerun()
+                else:
+                    st.error('Senha incorreta.')
+        else:
+            st.warning('Este usuário ainda não possui senha cadastrada. Cadastre uma senha para entrar.')
+
+            with st.form('criar_primeira_senha'):
+                senha_1 = st.text_input('Criar senha', type='password')
+                senha_2 = st.text_input('Repetir senha', type='password')
+                criar = st.form_submit_button('Cadastrar senha e entrar', use_container_width=True)
+
+            if criar:
+                if len(senha_1) < 4:
+                    st.error('A senha precisa ter pelo menos 4 caracteres.')
+                elif senha_1 != senha_2:
+                    st.error('As senhas não coincidem.')
+                else:
+                    users[usuario]['password_hash'] = hash_password(senha_1)
+                    auth['meta']['last_user'] = usuario
+                    save_auth_data(auth)
+                    st.session_state.logged_in = True
+                    st.session_state.current_user = usuario
+                    st.session_state.force_switch_user = False
+                    st.rerun()
 
         st.markdown('</div>', unsafe_allow_html=True)
 

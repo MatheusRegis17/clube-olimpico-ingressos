@@ -82,3 +82,12 @@ Main file path: `app.py`
 - fundo escuro premium
 - card de login em vidro escuro
 - visual sem fundo branco
+
+
+## Atualização solicitada
+
+- Tela inicial agora sempre exige seleção de usuário.
+- Se o usuário já tiver senha, aparece campo de senha e botão Entrar.
+- Se o usuário ainda não tiver senha, ele precisa cadastrar senha para entrar.
+- Removida a opção de entrar sem senha.
+- Mapa das mesas trocado para `assets/mapa_mesas_base.png`.
