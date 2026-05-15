@@ -6,6 +6,7 @@ from pathlib import Path
 from io import BytesIO
 
 import streamlit as st
+from streamlit_image_coordinates import streamlit_image_coordinates
 from PIL import Image, ImageDraw
 
 st.set_page_config(page_title="Clube Olímpico Ingressos", page_icon="🎟️", layout="wide", initial_sidebar_state="expanded")
@@ -81,6 +82,49 @@ def image_data_uri(path):
         return ""
 
 
+def inject_background():
+    """Injeta o fundo por HTML fixo. Isso é mais estável no Streamlit Cloud do que usar url() gigante no CSS."""
+    cfg = load_config()
+    bg_uri_local = image_data_uri(BACKGROUND_PATH)
+    if not bg_uri_local:
+        return
+
+    opacity = max(0, min(95, int(cfg.get("background_opacity", 58)))) / 100
+    blur = max(0, min(20, int(cfg.get("background_blur", 0))))
+    position = cfg.get("background_position", "center center")
+
+    st.markdown(
+        f"""
+        <style>
+        .coj-bg {{
+            position: fixed;
+            inset: 0;
+            z-index: -999999;
+            background-image:
+                linear-gradient(rgba(4,10,20,{opacity}), rgba(4,10,20,{min(0.94, opacity + 0.06)})),
+                url("{bg_uri_local}");
+            background-size: cover;
+            background-position: {position};
+            background-repeat: no-repeat;
+            filter: blur({blur}px);
+            transform: scale(1.02);
+        }}
+        [data-testid="stAppViewContainer"] {{
+            background: transparent !important;
+        }}
+        [data-testid="stAppViewContainer"] > .main {{
+            background: transparent !important;
+        }}
+        .stApp {{
+            background: transparent !important;
+        }}
+        </style>
+        <div class="coj-bg"></div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 config = load_config()
 bg_uri = image_data_uri(BACKGROUND_PATH)
 bg_alpha = max(0, min(95, int(config.get("background_opacity", 76)))) / 100
@@ -93,13 +137,7 @@ bg_position = config.get("background_position", "center center")
 st.markdown(f"""
 <style>
 .stApp {{
-    background:
-      linear-gradient(rgba(4, 10, 20, {bg_alpha}), rgba(4, 10, 20, {min(0.92, bg_alpha + 0.06)})),
-      url("{bg_uri}");
-    background-size: cover;
-    background-position: {bg_position};
-    background-attachment: fixed;
-    background-repeat: no-repeat;
+    background: transparent !important;
 }}
 .stApp::before {{
     content: "";
@@ -316,6 +354,9 @@ h1, h2, h3, h4, h5, h6, p, label, span {{
 .mesa-gratuidade {{ background: linear-gradient(180deg, #845ef7, #5f3dc4); color: white; }}
 </style>
 """, unsafe_allow_html=True)
+
+
+inject_background()
 
 
 def show_image(path, width=None):
@@ -848,9 +889,31 @@ def save_uploaded_image(uploaded_file, target_path):
     if uploaded_file is None:
         return False
     target_path.parent.mkdir(exist_ok=True)
-    img = Image.open(uploaded_file).convert("RGBA")
-    img.save(target_path)
+    img = Image.open(uploaded_file)
+    # Padroniza para PNG estável
+    if img.mode not in ("RGB", "RGBA"):
+        img = img.convert("RGBA")
+    img.save(target_path, format="PNG")
     return True
+
+
+def map_preview_with_selected(mesas, selected_mesa=None):
+    """Preview do mapa para edição, destacando a mesa selecionada."""
+    image_bytes = generate_quadra_map(mesas, show_coord_labels=True)
+    img = Image.open(BytesIO(image_bytes)).convert("RGBA")
+
+    if selected_mesa is not None:
+        coords = load_table_coordinates()
+        item = next((i for i in coords if int(i["mesa"]) == int(selected_mesa)), None)
+        if item:
+            draw = ImageDraw.Draw(img)
+            x, y = int(item["x"]), int(item["y"])
+            draw.ellipse((x-42, y-42, x+42, y+42), outline="#ffff00", width=6)
+            draw.ellipse((x-49, y-49, x+49, y+49), outline="#111827", width=3)
+
+    bio = BytesIO()
+    img.save(bio, format="PNG")
+    return bio.getvalue()
 
 
 def page_master():
@@ -929,6 +992,7 @@ def page_master():
 
         with col1:
             st.markdown("**Fundo do sistema**")
+            st.caption("Depois de salvar, a página recarrega e o fundo já deve aparecer.")
             bg = st.file_uploader("Enviar novo fundo", type=["png", "jpg", "jpeg"], key="upload_bg")
             if st.button("Salvar novo fundo", use_container_width=True):
                 if save_uploaded_image(bg, BACKGROUND_PATH):
@@ -986,45 +1050,86 @@ def page_master():
             )
 
     with aba4:
-        st.markdown("### Ajustar mesa individual")
+        st.markdown("### Ajustar mesa com o mouse")
+        st.info(
+            "Escolha a mesa e clique no ponto desejado do mapa. "
+            "O sistema salva a posição automaticamente e atualiza o mapa de mesas."
+        )
+
         coords = load_table_coordinates()
         if not coords:
-            st.warning("Não encontrei o arquivo de coordenadas. Clique em recriar posição padrão.")
+            st.warning("Não encontrei o arquivo de coordenadas. Clique em recriar posição padrão na aba Mapa das mesas.")
         else:
             mesas_numeros = [int(item["mesa"]) for item in coords]
-            mesa_sel = st.selectbox("Mesa", mesas_numeros)
+            mesa_sel = st.selectbox("Mesa para posicionar", mesas_numeros, key="mesa_click_select")
             item = next((i for i in coords if int(i["mesa"]) == int(mesa_sel)), coords[0])
 
             col1, col2, col3 = st.columns(3)
             with col1:
-                x = st.number_input("X", value=int(item["x"]), step=5)
+                st.metric("X atual", int(item["x"]))
             with col2:
-                y = st.number_input("Y", value=int(item["y"]), step=5)
+                st.metric("Y atual", int(item["y"]))
             with col3:
                 passo = st.number_input("Passo dos botões", value=10, min_value=1, max_value=100)
 
-            c1, c2, c3, c4 = st.columns(4)
-            if c1.button("⬅️ Esquerda", use_container_width=True):
-                x -= passo
-            if c2.button("➡️ Direita", use_container_width=True):
-                x += passo
-            if c3.button("⬆️ Subir", use_container_width=True):
-                y -= passo
-            if c4.button("⬇️ Descer", use_container_width=True):
-                y += passo
+            st.markdown("#### Clique no mapa para mover a mesa selecionada")
+            click = streamlit_image_coordinates(
+                map_preview_with_selected(load_mesas(), mesa_sel),
+                key=f"map_click_{mesa_sel}",
+                use_column_width=True,
+            )
 
-            if st.button("Salvar posição da mesa", use_container_width=True):
+            if click is not None:
+                # streamlit-image-coordinates retorna coordenadas na imagem exibida.
+                # Para garantir proporção correta, usamos a imagem original gerada e a dimensão retornada pelo componente.
+                x_click = int(click.get("x", item["x"]))
+                y_click = int(click.get("y", item["y"]))
+
                 for i in coords:
                     if int(i["mesa"]) == int(mesa_sel):
-                        i["x"] = int(x)
-                        i["y"] = int(y)
+                        i["x"] = x_click
+                        i["y"] = y_click
                         break
+
                 MAP_COORDS_PATH.write_text(json.dumps(coords, ensure_ascii=False, indent=2), encoding="utf-8")
-                st.success(f"Mesa {mesa_sel} salva em X={int(x)} / Y={int(y)}.")
+                st.success(f"Mesa {mesa_sel} movida para X={x_click} / Y={y_click}.")
                 st.rerun()
 
-            st.markdown("### Prévia atualizada")
-            st.image(generate_quadra_map(load_mesas(), show_coord_labels=True), use_container_width=True)
+            st.markdown("#### Ajuste fino")
+            c1, c2, c3, c4 = st.columns(4)
+            novo_x = int(item["x"])
+            novo_y = int(item["y"])
+
+            if c1.button("⬅️ Esquerda", use_container_width=True):
+                novo_x -= passo
+            if c2.button("➡️ Direita", use_container_width=True):
+                novo_x += passo
+            if c3.button("⬆️ Subir", use_container_width=True):
+                novo_y -= passo
+            if c4.button("⬇️ Descer", use_container_width=True):
+                novo_y += passo
+
+            if novo_x != int(item["x"]) or novo_y != int(item["y"]):
+                for i in coords:
+                    if int(i["mesa"]) == int(mesa_sel):
+                        i["x"] = int(novo_x)
+                        i["y"] = int(novo_y)
+                        break
+                MAP_COORDS_PATH.write_text(json.dumps(coords, ensure_ascii=False, indent=2), encoding="utf-8")
+                st.rerun()
+
+            with st.expander("Edição manual por X e Y"):
+                x = st.number_input("X", value=int(item["x"]), step=5)
+                y = st.number_input("Y", value=int(item["y"]), step=5)
+                if st.button("Salvar X/Y manual", use_container_width=True):
+                    for i in coords:
+                        if int(i["mesa"]) == int(mesa_sel):
+                            i["x"] = int(x)
+                            i["y"] = int(y)
+                            break
+                    MAP_COORDS_PATH.write_text(json.dumps(coords, ensure_ascii=False, indent=2), encoding="utf-8")
+                    st.success(f"Mesa {mesa_sel} salva em X={int(x)} / Y={int(y)}.")
+                    st.rerun()
 
 
 init_files()
