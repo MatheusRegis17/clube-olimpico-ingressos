@@ -2,22 +2,25 @@
 
 Sistema em Streamlit para controle de mesas, ingressos e eventos do Clube Olímpico.
 
-## Primeiro evento
-- Festa Junina 2026
-- Data: 04/07/2026
-- Local: Quadra do Clube
-- Mesa: R$ 40,00
-- Ingresso individual: R$ 10,00
+## Versão 2
 
-## Como rodar localmente
+- Tela de login
+- Primeiro acesso com criação de senha
+- Usuários: Secretaria Lucas, Secretaria Juliana, Adm e Carla Curi
+- Menu moderno
+- Controle de mesas
+- Controle de ingressos individuais
+- Gratuidade do presidente com popup de senha
+
+Senha da gratuidade:
+
+```text
+Cata1010#
+```
+
+## Rodar localmente
 
 ```bash
 pip install -r requirements.txt
 streamlit run app.py
-```
-
-## Arquivo principal
-
-```text
-app.py
 ```

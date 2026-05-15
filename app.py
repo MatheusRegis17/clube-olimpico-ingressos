@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-
-# =========================================================
-# CONFIGURAÇÃO PRINCIPAL
-# =========================================================
+from pathlib import Path
+import hashlib
+import json
+from streamlit_option_menu import option_menu
 
 st.set_page_config(
     page_title="Clube Olímpico Ingressos",
@@ -13,402 +13,433 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# =========================================================
-# ESTILO VISUAL
-# =========================================================
+BASE_DIR = Path(__file__).parent
+DATA_DIR = BASE_DIR / "data"
+USERS_PATH = DATA_DIR / "users.json"
+MESAS_PATH = DATA_DIR / "mesas.csv"
+INGRESSOS_PATH = DATA_DIR / "ingressos.csv"
+
+VALOR_MESA = 40.0
+VALOR_INGRESSO = 10.0
+SENHA_GRATUIDADE = "Cata1010#"
 
 st.markdown(
     """
     <style>
-        .main {
-            background-color: #0e1117;
-        }
-
-        .block-container {
-            padding-top: 2rem;
-            padding-bottom: 2rem;
-        }
-
-        .titulo-principal {
-            font-size: 42px;
-            font-weight: 800;
-            color: #ffffff;
-            margin-bottom: 0px;
-        }
-
-        .subtitulo {
-            font-size: 18px;
-            color: #b8c1ec;
-            margin-top: 0px;
-            margin-bottom: 25px;
-        }
-
-        .card {
-            background: linear-gradient(135deg, #161b22, #1f2937);
-            border: 1px solid #30363d;
-            border-radius: 18px;
-            padding: 22px;
-            box-shadow: 0 6px 20px rgba(0,0,0,0.25);
-            margin-bottom: 16px;
-        }
-
-        .card h3 {
-            color: #ffffff;
-            margin-bottom: 6px;
-        }
-
-        .card p {
-            color: #c9d1d9;
-            margin-bottom: 0;
-        }
-
-        .mesa-disponivel {
-            background-color: #1f8f4d;
-            color: white;
-            padding: 10px;
-            border-radius: 10px;
-            text-align: center;
-            font-weight: bold;
-            margin: 3px;
-        }
-
-        .mesa-reservada {
-            background-color: #d9a300;
-            color: black;
-            padding: 10px;
-            border-radius: 10px;
-            text-align: center;
-            font-weight: bold;
-            margin: 3px;
-        }
-
-        .mesa-vendida {
-            background-color: #b42318;
-            color: white;
-            padding: 10px;
-            border-radius: 10px;
-            text-align: center;
-            font-weight: bold;
-            margin: 3px;
-        }
-
-        .rodape {
-            color: #8b949e;
-            font-size: 13px;
-            margin-top: 30px;
-        }
+    .stApp {
+        background: radial-gradient(circle at top left, #1b2745 0%, #0f172a 35%, #090d16 100%);
+    }
+    .block-container { padding-top: 1.2rem; padding-bottom: 2rem; }
+    .app-header {
+        background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 22px;
+        padding: 18px 22px;
+        margin-bottom: 18px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.20);
+    }
+    .app-title { font-size: 34px; font-weight: 800; color: white; margin: 0; }
+    .app-subtitle { font-size: 15px; color: #dbe4ff; margin-top: 4px; }
+    .login-shell {
+        max-width: 520px;
+        margin: 0 auto;
+        background: linear-gradient(135deg, rgba(17,24,39,0.97), rgba(30,41,59,0.92));
+        border: 1px solid rgba(255,255,255,0.09);
+        border-radius: 24px;
+        padding: 28px;
+        box-shadow: 0 18px 45px rgba(0,0,0,0.28);
+    }
+    .logo-box {
+        background: linear-gradient(135deg, #f59e0b, #ef4444);
+        border-radius: 22px;
+        padding: 20px;
+        text-align: center;
+        color: white;
+        font-weight: 900;
+        font-size: 24px;
+        margin-bottom: 18px;
+        border: 1px solid rgba(255,255,255,0.15);
+    }
+    .mesa-box {
+        border-radius: 12px;
+        padding: 10px 6px;
+        text-align: center;
+        font-weight: 700;
+        font-size: 13px;
+        margin-bottom: 8px;
+        border: 1px solid rgba(255,255,255,0.10);
+        box-shadow: 0 6px 14px rgba(0,0,0,0.15);
+    }
+    .mesa-disponivel { background: linear-gradient(180deg, #1ea35a, #177c45); color: white; }
+    .mesa-reservada { background: linear-gradient(180deg, #f5b301, #d99200); color: #1a1a1a; }
+    .mesa-vendida { background: linear-gradient(180deg, #dc3f45, #b12024); color: white; }
+    .mesa-cancelada { background: linear-gradient(180deg, #5b6476, #404858); color: white; }
+    .mesa-gratuidade { background: linear-gradient(180deg, #845ef7, #5f3dc4); color: white; }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# =========================================================
-# DADOS TEMPORÁRIOS PARA TESTE
-# Depois vamos trocar isso pelo Google Sheets.
-# =========================================================
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
-if "mesas" not in st.session_state:
-    st.session_state.mesas = pd.DataFrame({
-        "mesa": list(range(1, 101)),
-        "status": ["Disponível"] * 100,
-        "comprador": [""] * 100,
-        "telefone": [""] * 100,
-        "vendedor": [""] * 100,
-        "pagamento": [""] * 100,
-        "valor": [40.00] * 100,
-        "data_hora": [""] * 100
-    })
+def now_str() -> str:
+    return datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
-if "ingressos" not in st.session_state:
-    st.session_state.ingressos = pd.DataFrame(columns=[
-        "comprador",
-        "telefone",
-        "quantidade",
-        "vendedor",
-        "pagamento",
-        "total",
-        "data_hora"
-    ])
-
-# =========================================================
-# FUNÇÕES
-# =========================================================
-
-def formatar_moeda(valor):
+def formatar_moeda(valor: float) -> str:
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+def init_files():
+    DATA_DIR.mkdir(exist_ok=True)
+    if not USERS_PATH.exists():
+        USERS_PATH.write_text(json.dumps({
+            "Secretaria Lucas": {"password_hash": ""},
+            "Secretaria Juliana": {"password_hash": ""},
+            "Adm": {"password_hash": ""},
+            "Carla Curi": {"password_hash": ""}
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
 
-def calcular_resumo():
-    mesas = st.session_state.mesas
-    ingressos = st.session_state.ingressos
+    if not MESAS_PATH.exists():
+        mesas = pd.DataFrame({
+            "mesa": list(range(1, 101)),
+            "status": ["Disponível"] * 100,
+            "comprador": [""] * 100,
+            "telefone": [""] * 100,
+            "vendedor": [""] * 100,
+            "pagamento": [""] * 100,
+            "valor": [VALOR_MESA] * 100,
+            "data_hora": [""] * 100,
+            "observacao": [""] * 100,
+        })
+        mesas.to_csv(MESAS_PATH, index=False)
 
+    if not INGRESSOS_PATH.exists():
+        ingressos = pd.DataFrame(columns=[
+            "comprador", "telefone", "quantidade", "vendedor",
+            "pagamento", "total", "data_hora", "observacao"
+        ])
+        ingressos.to_csv(INGRESSOS_PATH, index=False)
+
+def load_users():
+    return json.loads(USERS_PATH.read_text(encoding="utf-8"))
+
+def save_users(users):
+    USERS_PATH.write_text(json.dumps(users, ensure_ascii=False, indent=2), encoding="utf-8")
+
+def load_mesas():
+    return pd.read_csv(MESAS_PATH).fillna("")
+
+def save_mesas(df):
+    df.to_csv(MESAS_PATH, index=False)
+
+def load_ingressos():
+    try:
+        return pd.read_csv(INGRESSOS_PATH).fillna("")
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame(columns=[
+            "comprador", "telefone", "quantidade", "vendedor",
+            "pagamento", "total", "data_hora", "observacao"
+        ])
+
+def save_ingressos(df):
+    df.to_csv(INGRESSOS_PATH, index=False)
+
+def refresh_data():
+    st.session_state.mesas_df = load_mesas()
+    st.session_state.ingressos_df = load_ingressos()
+
+def calcular_resumo(mesas, ingressos):
     mesas_vendidas = len(mesas[mesas["status"] == "Vendida"])
     mesas_reservadas = len(mesas[mesas["status"] == "Reservada"])
     mesas_disponiveis = len(mesas[mesas["status"] == "Disponível"])
+    mesas_gratuidade = len(mesas[mesas["status"] == "Gratuidade"])
+    receita_mesas = pd.to_numeric(mesas[mesas["status"] == "Vendida"]["valor"], errors="coerce").fillna(0).sum()
+    receita_ingressos = 0.0 if ingressos.empty else pd.to_numeric(ingressos["total"], errors="coerce").fillna(0).sum()
+    return mesas_disponiveis, mesas_reservadas, mesas_vendidas, mesas_gratuidade, receita_mesas, receita_ingressos
 
-    receita_mesas = mesas_vendidas * 40.00
-    receita_ingressos = ingressos["total"].sum() if not ingressos.empty else 0
-    receita_total = receita_mesas + receita_ingressos
-
+def mesa_class(status):
     return {
-        "mesas_vendidas": mesas_vendidas,
-        "mesas_reservadas": mesas_reservadas,
-        "mesas_disponiveis": mesas_disponiveis,
-        "receita_mesas": receita_mesas,
-        "receita_ingressos": receita_ingressos,
-        "receita_total": receita_total
-    }
+        "Disponível": "mesa-disponivel",
+        "Reservada": "mesa-reservada",
+        "Vendida": "mesa-vendida",
+        "Cancelada": "mesa-cancelada",
+        "Gratuidade": "mesa-gratuidade",
+    }.get(status, "mesa-disponivel")
 
-
-def exibir_mesa_card(numero, status):
-    if status == "Disponível":
-        classe = "mesa-disponivel"
-    elif status == "Reservada":
-        classe = "mesa-reservada"
+def salvar_mesa(payload, gratuidade=False):
+    mesas = load_mesas()
+    idx = mesas.index[mesas["mesa"] == int(payload["mesa_numero"])][0]
+    if gratuidade:
+        status = "Gratuidade"
+        pagamento = "Gratuidade do Presidente"
+        valor = 0.0
     else:
-        classe = "mesa-vendida"
+        status = payload["status"]
+        pagamento = payload["pagamento"]
+        valor = 0.0 if status == "Cancelada" else VALOR_MESA
 
-    st.markdown(
-        f"<div class='{classe}'>Mesa {numero}<br>{status}</div>",
-        unsafe_allow_html=True
-    )
+    mesas.loc[idx, "status"] = status
+    mesas.loc[idx, "comprador"] = payload["comprador"]
+    mesas.loc[idx, "telefone"] = payload["telefone"]
+    mesas.loc[idx, "vendedor"] = payload["vendedor"]
+    mesas.loc[idx, "pagamento"] = pagamento
+    mesas.loc[idx, "valor"] = valor
+    mesas.loc[idx, "data_hora"] = now_str()
+    mesas.loc[idx, "observacao"] = payload["observacao"]
+    save_mesas(mesas)
+    refresh_data()
 
-# =========================================================
-# MENU LATERAL
-# =========================================================
+def salvar_ingresso(payload, gratuidade=False):
+    ingressos = load_ingressos()
+    total = 0.0 if gratuidade else float(payload["quantidade"]) * VALOR_INGRESSO
+    pagamento = "Gratuidade do Presidente" if gratuidade else payload["pagamento"]
+    nova = pd.DataFrame([{
+        "comprador": payload["comprador"],
+        "telefone": payload["telefone"],
+        "quantidade": payload["quantidade"],
+        "vendedor": payload["vendedor"],
+        "pagamento": pagamento,
+        "total": total,
+        "data_hora": now_str(),
+        "observacao": payload["observacao"],
+    }])
+    save_ingressos(pd.concat([ingressos, nova], ignore_index=True))
+    refresh_data()
 
-st.sidebar.title("🎟️ Clube Olímpico")
-st.sidebar.caption("Sistema de ingressos e eventos")
+@st.dialog("Autorizar gratuidade do presidente")
+def dialog_gratuidade(tipo):
+    st.write("Digite a senha de autorização do presidente.")
+    senha = st.text_input("Senha", type="password")
+    c1, c2 = st.columns(2)
+    if c1.button("Confirmar", use_container_width=True):
+        if senha == SENHA_GRATUIDADE:
+            if tipo == "mesa":
+                salvar_mesa(st.session_state.pending_mesa, gratuidade=True)
+                st.session_state.pending_mesa = None
+                st.session_state.show_grat_mesa = False
+                st.success("Gratuidade autorizada.")
+                st.rerun()
+            if tipo == "ingresso":
+                salvar_ingresso(st.session_state.pending_ingresso, gratuidade=True)
+                st.session_state.pending_ingresso = None
+                st.session_state.show_grat_ingresso = False
+                st.success("Gratuidade autorizada.")
+                st.rerun()
+        else:
+            st.error("Senha incorreta.")
+    if c2.button("Cancelar", use_container_width=True):
+        st.session_state.show_grat_mesa = False
+        st.session_state.show_grat_ingresso = False
+        st.rerun()
 
-pagina = st.sidebar.radio(
-    "Menu",
-    [
-        "Dashboard",
-        "Mapa de Mesas",
-        "Vender Mesa",
-        "Ingressos Individuais",
-        "Relatórios"
-    ]
-)
+def init_session():
+    for key, value in {
+        "logged_in": False,
+        "current_user": None,
+        "pending_mesa": None,
+        "pending_ingresso": None,
+        "show_grat_mesa": False,
+        "show_grat_ingresso": False,
+    }.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
-st.sidebar.divider()
-
-evento_ativo = st.sidebar.selectbox(
-    "Evento ativo",
-    ["Festa Junina 2026"]
-)
-
-st.sidebar.info(
-    """
-    **Evento:** Festa Junina 2026  
-    **Data:** 04/07/2026  
-    **Local:** Quadra do Clube
-    """
-)
-
-# =========================================================
-# CABEÇALHO
-# =========================================================
-
-st.markdown("<h1 class='titulo-principal'>Clube Olímpico Ingressos</h1>", unsafe_allow_html=True)
-st.markdown("<p class='subtitulo'>Sistema de controle de mesas, ingressos e eventos</p>", unsafe_allow_html=True)
-
-# =========================================================
-# PÁGINA: DASHBOARD
-# =========================================================
-
-if pagina == "Dashboard":
-    resumo = calcular_resumo()
-
-    st.subheader("📊 Visão geral do evento")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.metric("Mesas disponíveis", resumo["mesas_disponiveis"])
-
+def login_screen():
+    users = load_users()
+    col1, col2, col3 = st.columns([1, 1.35, 1])
     with col2:
-        st.metric("Mesas reservadas", resumo["mesas_reservadas"])
+        st.markdown('<div class="login-shell">', unsafe_allow_html=True)
+        st.markdown('<div class="logo-box">🎟️ Clube Olímpico<br>Ingressos<br><small>Arraiá</small></div>', unsafe_allow_html=True)
+        st.markdown("### Acesso ao sistema")
+        usuario = st.selectbox("Selecione seu acesso", list(users.keys()))
+        tem_senha = bool(users[usuario]["password_hash"])
 
-    with col3:
-        st.metric("Mesas vendidas", resumo["mesas_vendidas"])
+        if not tem_senha:
+            st.info("Primeiro acesso. Crie sua senha.")
+            with st.form("criar_senha"):
+                s1 = st.text_input("Crie uma senha", type="password")
+                s2 = st.text_input("Repita a senha", type="password")
+                ok = st.form_submit_button("Criar senha")
+            if ok:
+                if len(s1) < 4:
+                    st.error("A senha precisa ter pelo menos 4 caracteres.")
+                elif s1 != s2:
+                    st.error("As senhas não coincidem.")
+                else:
+                    users[usuario]["password_hash"] = hash_password(s1)
+                    save_users(users)
+                    st.success("Senha criada. Faça login.")
+                    st.rerun()
+        else:
+            with st.form("login"):
+                senha = st.text_input("Senha", type="password")
+                entrar = st.form_submit_button("Entrar")
+            if entrar:
+                if hash_password(senha) == users[usuario]["password_hash"]:
+                    st.session_state.logged_in = True
+                    st.session_state.current_user = usuario
+                    st.rerun()
+                else:
+                    st.error("Senha incorreta.")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    col4, col5, col6 = st.columns(3)
-
-    with col4:
-        st.metric("Receita com mesas", formatar_moeda(resumo["receita_mesas"]))
-
-    with col5:
-        st.metric("Receita com ingressos", formatar_moeda(resumo["receita_ingressos"]))
-
-    with col6:
-        st.metric("Receita total", formatar_moeda(resumo["receita_total"]))
-
-    st.markdown("---")
-
+def header():
     st.markdown(
-        """
-        <div class="card">
-            <h3>🎪 Evento ativo</h3>
-            <p><strong>Festa Junina 2026</strong><br>
-            Data: 04/07/2026<br>
-            Local: Quadra do Clube<br>
-            Mesa: R$ 40,00<br>
-            Ingresso individual: R$ 10,00</p>
+        f"""
+        <div class="app-header">
+            <p class="app-title">🎟️ Clube Olímpico Ingressos</p>
+            <p class="app-subtitle">Sistema de controle de mesas, ingressos e eventos • Usuário: <strong>{st.session_state.current_user}</strong></p>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-# =========================================================
-# PÁGINA: MAPA DE MESAS
-# =========================================================
+def sidebar():
+    with st.sidebar:
+        st.markdown("## 🎪 Evento ativo")
+        st.markdown("""
+        **Festa Junina 2026**  
+        📅 04/07/2026  
+        📍 Quadra do Clube  
+        🪑 Mesa: R$ 40,00  
+        🎫 Ingresso: R$ 10,00
+        """)
+        st.markdown("---")
+        st.markdown(f"**Usuário:** {st.session_state.current_user}")
+        if st.button("Sair", use_container_width=True):
+            st.session_state.logged_in = False
+            st.session_state.current_user = None
+            st.rerun()
 
-elif pagina == "Mapa de Mesas":
-    st.subheader("🪑 Mapa de Mesas")
+def menu():
+    return option_menu(
+        menu_title=None,
+        options=["Dashboard", "Mesas", "Ingressos", "Relatórios"],
+        icons=["speedometer2", "grid-3x3-gap-fill", "ticket-perforated-fill", "bar-chart-fill"],
+        orientation="horizontal",
+        styles={
+            "container": {"padding": "0!important", "background-color": "rgba(255,255,255,0.03)", "border-radius": "16px"},
+            "icon": {"color": "#f5d061", "font-size": "16px"},
+            "nav-link": {"font-size": "15px", "font-weight": "600", "text-align": "center", "padding": "12px 10px", "color": "#dfe7fb"},
+            "nav-link-selected": {"background": "linear-gradient(135deg, #f59e0b, #ef4444)", "color": "white"},
+        }
+    )
 
-    st.caption("Verde = disponível | Amarelo = reservada | Vermelho = vendida")
+def page_dashboard():
+    mesas = st.session_state.mesas_df
+    ingressos = st.session_state.ingressos_df
+    disp, res, vend, grat, rec_mesas, rec_ing = calcular_resumo(mesas, ingressos)
+    st.subheader("📊 Visão geral")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Disponíveis", disp)
+    c2.metric("Reservadas", res)
+    c3.metric("Vendidas", vend)
+    c4.metric("Gratuidades", grat)
+    c5, c6, c7 = st.columns(3)
+    c5.metric("Receita mesas", formatar_moeda(rec_mesas))
+    c6.metric("Receita ingressos", formatar_moeda(rec_ing))
+    c7.metric("Total geral", formatar_moeda(rec_mesas + rec_ing))
 
-    mesas = st.session_state.mesas
-
+def page_mesas():
+    mesas = st.session_state.mesas_df
+    st.subheader("🪑 Controle de Mesas")
     for inicio in range(0, 100, 10):
         cols = st.columns(10)
         for i, col in enumerate(cols):
             idx = inicio + i
             if idx < len(mesas):
+                row = mesas.iloc[idx]
                 with col:
-                    mesa = mesas.iloc[idx]
-                    exibir_mesa_card(mesa["mesa"], mesa["status"])
-
-# =========================================================
-# PÁGINA: VENDER MESA
-# =========================================================
-
-elif pagina == "Vender Mesa":
-    st.subheader("🧾 Registrar venda ou reserva de mesa")
-
-    mesas = st.session_state.mesas
-
-    mesas_disponiveis = mesas[mesas["status"] == "Disponível"]["mesa"].tolist()
-    mesas_reservadas = mesas[mesas["status"] == "Reservada"]["mesa"].tolist()
-    mesas_todas = mesas["mesa"].tolist()
-
-    with st.form("form_venda_mesa"):
-        mesa_numero = st.selectbox("Número da mesa", mesas_todas)
-
-        comprador = st.text_input("Nome do comprador")
-        telefone = st.text_input("Telefone / WhatsApp")
-        vendedor = st.text_input("Vendedor")
-        status = st.selectbox("Status", ["Reservada", "Vendida", "Disponível", "Cancelada"])
-        pagamento = st.selectbox("Forma de pagamento", ["PIX", "Dinheiro", "Cartão", "Pendente", "Outro"])
-
-        observacao = st.text_area("Observação", placeholder="Ex: aguardando comprovante, pedido feito por WhatsApp etc.")
-
-        enviar = st.form_submit_button("Salvar mesa")
-
-    if enviar:
-        idx = st.session_state.mesas.index[st.session_state.mesas["mesa"] == mesa_numero][0]
-
-        st.session_state.mesas.loc[idx, "status"] = status
-        st.session_state.mesas.loc[idx, "comprador"] = comprador
-        st.session_state.mesas.loc[idx, "telefone"] = telefone
-        st.session_state.mesas.loc[idx, "vendedor"] = vendedor
-        st.session_state.mesas.loc[idx, "pagamento"] = pagamento
-        st.session_state.mesas.loc[idx, "valor"] = 40.00
-        st.session_state.mesas.loc[idx, "data_hora"] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-
-        st.success(f"Mesa {mesa_numero} atualizada com sucesso!")
-
+                    st.markdown(
+                        f"<div class='mesa-box {mesa_class(row['status'])}'>Mesa {int(row['mesa'])}<br>{row['status']}</div>",
+                        unsafe_allow_html=True
+                    )
     st.markdown("---")
-    st.subheader("Consulta rápida")
+    with st.form("form_mesa"):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            mesa_numero = st.selectbox("Número da mesa", mesas["mesa"].tolist())
+            comprador = st.text_input("Nome do comprador")
+        with c2:
+            telefone = st.text_input("Telefone / WhatsApp")
+            vendedor = st.text_input("Vendedor", value=st.session_state.current_user)
+        with c3:
+            status = st.selectbox("Status", ["Reservada", "Vendida", "Disponível", "Cancelada"])
+            pagamento = st.selectbox("Forma de pagamento", ["PIX", "Dinheiro", "Cartão", "Pendente", "Outro"])
+        observacao = st.text_area("Observação")
+        gratuidade = st.checkbox("Gratuidade do presidente")
+        salvar = st.form_submit_button("Salvar mesa")
+    if salvar:
+        payload = dict(mesa_numero=mesa_numero, comprador=comprador, telefone=telefone, vendedor=vendedor, status=status, pagamento=pagamento, observacao=observacao)
+        if gratuidade:
+            st.session_state.pending_mesa = payload
+            st.session_state.show_grat_mesa = True
+            st.rerun()
+        else:
+            salvar_mesa(payload)
+            st.success("Mesa salva.")
+            st.rerun()
 
-    mesa_consulta = st.selectbox("Consultar mesa", mesas_todas, key="consulta_mesa")
-    dados_mesa = st.session_state.mesas[st.session_state.mesas["mesa"] == mesa_consulta].iloc[0]
-
-    st.write(dados_mesa)
-
-# =========================================================
-# PÁGINA: INGRESSOS INDIVIDUAIS
-# =========================================================
-
-elif pagina == "Ingressos Individuais":
-    st.subheader("🎫 Registrar ingressos individuais")
-
+def page_ingressos():
+    ingressos = st.session_state.ingressos_df
+    st.subheader("🎫 Ingressos Individuais")
     with st.form("form_ingresso"):
-        comprador = st.text_input("Nome do comprador")
-        telefone = st.text_input("Telefone / WhatsApp")
-        quantidade = st.number_input("Quantidade de ingressos", min_value=1, step=1)
-        vendedor = st.text_input("Vendedor")
-        pagamento = st.selectbox("Forma de pagamento", ["PIX", "Dinheiro", "Cartão", "Pendente", "Outro"])
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            comprador = st.text_input("Nome do comprador")
+            telefone = st.text_input("Telefone / WhatsApp")
+        with c2:
+            quantidade = st.number_input("Quantidade", min_value=1, step=1)
+            vendedor = st.text_input("Vendedor", value=st.session_state.current_user)
+        with c3:
+            pagamento = st.selectbox("Forma de pagamento", ["PIX", "Dinheiro", "Cartão", "Pendente", "Outro"])
+            st.info(f"Total previsto: {formatar_moeda(quantidade * VALOR_INGRESSO)}")
+        observacao = st.text_area("Observação")
+        gratuidade = st.checkbox("Gratuidade do presidente")
+        salvar = st.form_submit_button("Salvar ingresso")
+    if salvar:
+        payload = dict(comprador=comprador, telefone=telefone, quantidade=quantidade, vendedor=vendedor, pagamento=pagamento, observacao=observacao)
+        if gratuidade:
+            st.session_state.pending_ingresso = payload
+            st.session_state.show_grat_ingresso = True
+            st.rerun()
+        else:
+            salvar_ingresso(payload)
+            st.success("Ingresso salvo.")
+            st.rerun()
+    st.dataframe(ingressos, use_container_width=True, hide_index=True)
 
-        total = quantidade * 10.00
-        st.info(f"Total: {formatar_moeda(total)}")
-
-        enviar = st.form_submit_button("Salvar venda de ingresso")
-
-    if enviar:
-        nova_linha = {
-            "comprador": comprador,
-            "telefone": telefone,
-            "quantidade": quantidade,
-            "vendedor": vendedor,
-            "pagamento": pagamento,
-            "total": total,
-            "data_hora": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-        }
-
-        st.session_state.ingressos = pd.concat(
-            [st.session_state.ingressos, pd.DataFrame([nova_linha])],
-            ignore_index=True
-        )
-
-        st.success("Venda de ingresso registrada com sucesso!")
-
-    st.markdown("---")
-    st.subheader("Ingressos vendidos")
-
-    st.dataframe(st.session_state.ingressos, use_container_width=True)
-
-# =========================================================
-# PÁGINA: RELATÓRIOS
-# =========================================================
-
-elif pagina == "Relatórios":
+def page_relatorios():
+    mesas = st.session_state.mesas_df
+    ingressos = st.session_state.ingressos_df
     st.subheader("📑 Relatórios")
+    st.markdown("### Mesas")
+    st.dataframe(mesas, use_container_width=True, hide_index=True)
+    st.download_button("Baixar mesas CSV", mesas.to_csv(index=False).encode("utf-8-sig"), "relatorio_mesas.csv", "text/csv")
+    st.markdown("### Ingressos")
+    st.dataframe(ingressos, use_container_width=True, hide_index=True)
+    st.download_button("Baixar ingressos CSV", ingressos.to_csv(index=False).encode("utf-8-sig"), "relatorio_ingressos.csv", "text/csv")
 
-    resumo = calcular_resumo()
+init_files()
+init_session()
+refresh_data()
 
-    col1, col2, col3 = st.columns(3)
+if not st.session_state.logged_in:
+    login_screen()
+else:
+    sidebar()
+    header()
+    selected = menu()
+    if selected == "Dashboard":
+        page_dashboard()
+    elif selected == "Mesas":
+        page_mesas()
+    elif selected == "Ingressos":
+        page_ingressos()
+    elif selected == "Relatórios":
+        page_relatorios()
 
-    with col1:
-        st.metric("Total mesas", formatar_moeda(resumo["receita_mesas"]))
-
-    with col2:
-        st.metric("Total ingressos", formatar_moeda(resumo["receita_ingressos"]))
-
-    with col3:
-        st.metric("Total geral", formatar_moeda(resumo["receita_total"]))
-
-    st.markdown("---")
-
-    st.subheader("Mesas")
-    st.dataframe(st.session_state.mesas, use_container_width=True)
-
-    st.subheader("Ingressos")
-    st.dataframe(st.session_state.ingressos, use_container_width=True)
-
-    st.download_button(
-        label="Baixar relatório de mesas em CSV",
-        data=st.session_state.mesas.to_csv(index=False).encode("utf-8-sig"),
-        file_name="relatorio_mesas.csv",
-        mime="text/csv"
-    )
-
-    st.download_button(
-        label="Baixar relatório de ingressos em CSV",
-        data=st.session_state.ingressos.to_csv(index=False).encode("utf-8-sig"),
-        file_name="relatorio_ingressos.csv",
-        mime="text/csv"
-    )
-
-st.markdown("<p class='rodape'>Clube Olímpico Ingressos • Versão inicial de testes</p>", unsafe_allow_html=True)
+    if st.session_state.show_grat_mesa:
+        dialog_gratuidade("mesa")
+    if st.session_state.show_grat_ingresso:
+        dialog_gratuidade("ingresso")
