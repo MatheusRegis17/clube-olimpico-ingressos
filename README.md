@@ -337,3 +337,19 @@ Se aparecer 429, aguarde 2 a 5 minutos para a quota do Google liberar.
 Corrigido erro na função `save_table_coordinates`.
 A função estava chamando ela mesma repetidamente, causando `RecursionError`.
 Agora ela salva diretamente em `assets/mesa_coords.json` e depois envia para a aba `MapaMesas` do Google Sheets.
+
+
+## Atualização: popup de venda e e-mail
+
+Após uma venda de mesa/ingresso, o sistema abre uma janela:
+- `Ok`: confirma visualmente e solta balões/confete;
+- `Cancelar a venda?`: abre uma janela para informar o motivo e cancela a venda.
+
+Cancelamento:
+- Mesa: muda status para `Cancelada`;
+- Ingresso: zera o total e adiciona o motivo no campo observação.
+
+E-mail:
+- Opcional via SMTP no Streamlit Secrets.
+- Modelo adicionado em `.streamlit/secrets.example.toml`.
+- O sistema envia e-mail para venda concluída e venda cancelada, se `[mail].enabled = true`.

@@ -3,6 +3,8 @@ import hashlib
 import json
 import base64
 from datetime import datetime
+import smtplib
+from email.message import EmailMessage
 from pathlib import Path
 from io import BytesIO
 
@@ -873,6 +875,108 @@ def formatar_moeda(valor):
     return f"R$ {valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
 
+def get_mail_config():
+    """
+    Configuração opcional de e-mail via Streamlit Secrets.
+
+    Exemplo:
+    [mail]
+    enabled = true
+    smtp_server = "smtp.gmail.com"
+    smtp_port = 587
+    username = "seuemail@gmail.com"
+    password = "senha-de-app"
+    from_email = "seuemail@gmail.com"
+    to_email = "destino@dominio.com"
+    """
+    try:
+        mail = dict(st.secrets.get("mail", {}))
+    except Exception:
+        mail = {}
+
+    return {
+        "enabled": str(mail.get("enabled", "false")).lower() in ["true", "1", "sim", "yes"],
+        "smtp_server": mail.get("smtp_server", "smtp.gmail.com"),
+        "smtp_port": int(mail.get("smtp_port", 587)),
+        "username": mail.get("username", ""),
+        "password": mail.get("password", ""),
+        "from_email": mail.get("from_email", mail.get("username", "")),
+        "to_email": mail.get("to_email", ""),
+    }
+
+
+def email_enabled():
+    cfg = get_mail_config()
+    return bool(cfg["enabled"] and cfg["username"] and cfg["password"] and cfg["to_email"])
+
+
+def send_email_notification(subject, body):
+    if not email_enabled():
+        return False
+
+    cfg = get_mail_config()
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = cfg["from_email"]
+    msg["To"] = cfg["to_email"]
+    msg.set_content(body)
+
+    with smtplib.SMTP(cfg["smtp_server"], cfg["smtp_port"], timeout=15) as server:
+        server.starttls()
+        server.login(cfg["username"], cfg["password"])
+        server.send_message(msg)
+
+    return True
+
+
+def build_sale_email_body(event, action="concluída", motivo=""):
+    linhas = [
+        f"Evento: Festa Junina 2026",
+        f"Ação: Venda {action}",
+        f"Tipo: {event.get('tipo', '')}",
+        f"Data/Hora: {now_str()}",
+        f"Vendedor: {event.get('vendedor', '')}",
+        f"Comprador: {event.get('comprador', '')}",
+        f"Telefone: {event.get('telefone', '')}",
+    ]
+
+    if event.get("tipo") == "Mesa":
+        linhas.extend([
+            f"Mesa: {event.get('mesa_numero', '')}",
+            f"Status: {event.get('status', '')}",
+            f"Pagamento: {event.get('pagamento', '')}",
+            f"Valor: {formatar_moeda(float(event.get('valor', 0) or 0))}",
+        ])
+    else:
+        linhas.extend([
+            f"Quantidade: {event.get('quantidade', '')}",
+            f"Pagamento: {event.get('pagamento', '')}",
+            f"Total: {formatar_moeda(float(event.get('valor', 0) or 0))}",
+        ])
+
+    if event.get("observacao"):
+        linhas.append(f"Observação: {event.get('observacao')}")
+
+    if motivo:
+        linhas.append(f"Motivo do cancelamento: {motivo}")
+
+    return "\\n".join(linhas)
+
+
+def notify_sale(event, action="concluída", motivo=""):
+    try:
+        subject = f"Clube Olímpico Ingressos - Venda {action}: {event.get('tipo', '')}"
+        body = build_sale_email_body(event, action=action, motivo=motivo)
+        send_email_notification(subject, body)
+    except Exception as e:
+        warn_once("email_notify", f"Falha ao enviar e-mail de notificação. Detalhe: {e}")
+
+
+def set_pending_sale_dialog(event):
+    st.session_state.sale_dialog_event = event
+    st.session_state.show_sale_dialog = True
+
+
 def read_csv_rows(path, columns):
     if not path.exists():
         return []
@@ -1203,33 +1307,162 @@ def generate_quadra_map(mesas, show_coord_labels=False):
 
 def salvar_mesa(payload, gratuidade=False):
     mesas = load_all_mesas()
+    event = None
+
     for mesa in mesas:
         if mesa['mesa'] == str(payload['mesa_numero']):
+            status_final = payload['status']
+            pagamento_final = payload['pagamento']
+            valor_final = VALOR_MESA
+
             if gratuidade:
-                mesa['status'] = 'Gratuidade'
-                mesa['pagamento'] = 'Gratuidade do Presidente'
-                mesa['valor'] = '0.0'
-            else:
-                mesa['status'] = payload['status']
-                mesa['pagamento'] = payload['pagamento']
-                mesa['valor'] = '0.0' if payload['status']=='Cancelada' else str(VALOR_MESA)
+                status_final = 'Gratuidade'
+                pagamento_final = 'Gratuidade do Presidente'
+                valor_final = 0.0
+            elif payload['status'] == 'Cancelada':
+                valor_final = 0.0
+
+            mesa['status'] = status_final
+            mesa['pagamento'] = pagamento_final
+            mesa['valor'] = str(valor_final)
             mesa['comprador'] = payload['comprador']
             mesa['telefone'] = payload['telefone']
             mesa['vendedor'] = payload['vendedor']
             mesa['data_hora'] = now_str()
             mesa['observacao'] = payload['observacao']
+
+            event = {
+                "tipo": "Mesa",
+                "mesa_numero": str(payload['mesa_numero']),
+                "comprador": payload.get("comprador", ""),
+                "telefone": payload.get("telefone", ""),
+                "vendedor": payload.get("vendedor", ""),
+                "status": status_final,
+                "pagamento": pagamento_final,
+                "valor": valor_final,
+                "observacao": payload.get("observacao", ""),
+                "data_hora": mesa["data_hora"],
+            }
             break
+
     save_mesas(mesas)
     refresh_data()
+    return event
 
 
 def salvar_ingresso(payload, gratuidade=False):
     ingressos = load_ingressos()
     total = 0.0 if gratuidade else float(payload['quantidade']) * VALOR_INGRESSO
     pagamento = 'Gratuidade do Presidente' if gratuidade else payload['pagamento']
-    ingressos.append({'comprador': payload['comprador'], 'telefone': payload['telefone'], 'quantidade': str(payload['quantidade']), 'vendedor': payload['vendedor'], 'pagamento': pagamento, 'total': str(total), 'data_hora': now_str(), 'observacao': payload['observacao']})
+    data_hora = now_str()
+    row = {
+        'comprador': payload['comprador'],
+        'telefone': payload['telefone'],
+        'quantidade': str(payload['quantidade']),
+        'vendedor': payload['vendedor'],
+        'pagamento': pagamento,
+        'total': str(total),
+        'data_hora': data_hora,
+        'observacao': payload['observacao']
+    }
+    ingressos.append(row)
     save_ingressos(ingressos)
     refresh_data()
+
+    return {
+        "tipo": "Ingresso",
+        "comprador": payload.get("comprador", ""),
+        "telefone": payload.get("telefone", ""),
+        "quantidade": str(payload.get("quantidade", "")),
+        "vendedor": payload.get("vendedor", ""),
+        "pagamento": pagamento,
+        "valor": total,
+        "observacao": payload.get("observacao", ""),
+        "data_hora": data_hora,
+    }
+
+
+def cancelar_venda(event, motivo):
+    """
+    Cancela a venda mais recente a partir do evento salvo.
+    Mesa: muda status para Cancelada.
+    Ingresso: zera total e marca observação como cancelado.
+    """
+    motivo = motivo.strip() or "Cancelamento sem motivo informado"
+
+    if event.get("tipo") == "Mesa":
+        mesas = load_all_mesas()
+        for mesa in mesas:
+            if str(mesa.get("mesa")) == str(event.get("mesa_numero")):
+                mesa["status"] = "Cancelada"
+                mesa["valor"] = "0.0"
+                mesa["observacao"] = (mesa.get("observacao", "") + f" | CANCELADA: {motivo}").strip(" |")
+                mesa["data_hora"] = now_str()
+                break
+        save_mesas(mesas)
+        refresh_data()
+
+    elif event.get("tipo") == "Ingresso":
+        ingressos = load_ingressos()
+        for row in reversed(ingressos):
+            if (
+                row.get("data_hora") == event.get("data_hora")
+                and row.get("comprador") == event.get("comprador")
+                and str(row.get("quantidade")) == str(event.get("quantidade"))
+            ):
+                row["total"] = "0.0"
+                row["observacao"] = (row.get("observacao", "") + f" | CANCELADO: {motivo}").strip(" |")
+                break
+        save_ingressos(ingressos)
+        refresh_data()
+
+    notify_sale(event, action="cancelada", motivo=motivo)
+
+
+@st.dialog("Venda concluída")
+def dialog_venda_concluida():
+    event = st.session_state.get("sale_dialog_event") or {}
+
+    st.success("Venda concluída.")
+    st.write("Confirme a venda ou cancele informando o motivo.")
+
+    if event:
+        if event.get("tipo") == "Mesa":
+            st.markdown(f"**Mesa:** {event.get('mesa_numero')}  \n**Comprador:** {event.get('comprador')}  \n**Valor:** {formatar_moeda(float(event.get('valor', 0) or 0))}")
+        else:
+            st.markdown(f"**Ingresso:** {event.get('quantidade')} unidade(s)  \n**Comprador:** {event.get('comprador')}  \n**Valor:** {formatar_moeda(float(event.get('valor', 0) or 0))}")
+
+    col_ok, col_cancel = st.columns(2)
+
+    if col_ok.button("Ok", use_container_width=True):
+        st.balloons()
+        st.session_state.show_sale_dialog = False
+        st.session_state.sale_dialog_event = None
+        st.rerun()
+
+    if col_cancel.button("Cancelar a venda?", use_container_width=True):
+        st.session_state.show_cancel_sale_dialog = True
+        st.rerun()
+
+
+@st.dialog("Cancelar venda")
+def dialog_cancelar_venda():
+    event = st.session_state.get("sale_dialog_event") or {}
+    st.warning("Informe o motivo do cancelamento.")
+    motivo = st.text_area("Motivo", placeholder="Ex.: Cliente desistiu, pagamento não confirmado...")
+    col1, col2 = st.columns(2)
+
+    if col1.button("Confirmar cancelamento", use_container_width=True):
+        cancelar_venda(event, motivo)
+        st.session_state.show_cancel_sale_dialog = False
+        st.session_state.show_sale_dialog = False
+        st.session_state.sale_dialog_event = None
+        st.success("Venda cancelada.")
+        st.rerun()
+
+    if col2.button("Voltar", use_container_width=True):
+        st.session_state.show_cancel_sale_dialog = False
+        st.rerun()
 
 
 @st.dialog('Autorizar gratuidade do presidente')
@@ -1240,11 +1473,17 @@ def dialog_gratuidade(tipo):
     if c1.button('Confirmar', use_container_width=True):
         if senha == SENHA_GRATUIDADE:
             if tipo == 'mesa':
-                salvar_mesa(st.session_state.pending_mesa, gratuidade=True)
+                event = salvar_mesa(st.session_state.pending_mesa, gratuidade=True)
+                if event:
+                    notify_sale(event, action="concluída")
+                    set_pending_sale_dialog(event)
                 st.session_state.pending_mesa = None
                 st.session_state.show_grat_mesa = False
             if tipo == 'ingresso':
-                salvar_ingresso(st.session_state.pending_ingresso, gratuidade=True)
+                event = salvar_ingresso(st.session_state.pending_ingresso, gratuidade=True)
+                if event:
+                    notify_sale(event, action="concluída")
+                    set_pending_sale_dialog(event)
                 st.session_state.pending_ingresso = None
                 st.session_state.show_grat_ingresso = False
             st.success('Gratuidade autorizada.')
@@ -1258,7 +1497,7 @@ def dialog_gratuidade(tipo):
 
 
 def init_session():
-    defaults = {'logged_in': False, 'current_user': None, 'pending_mesa': None, 'pending_ingresso': None, 'show_grat_mesa': False, 'show_grat_ingresso': False, 'force_switch_user': False}
+    defaults = {'logged_in': False, 'current_user': None, 'pending_mesa': None, 'pending_ingresso': None, 'show_grat_mesa': False, 'show_grat_ingresso': False, 'force_switch_user': False, 'show_sale_dialog': False, 'show_cancel_sale_dialog': False, 'sale_dialog_event': None}
     for k,v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
@@ -1476,8 +1715,12 @@ def page_mesas():
             st.session_state.show_grat_mesa = True
             st.rerun()
         else:
-            salvar_mesa(payload)
-            st.success('Mesa salva.')
+            event = salvar_mesa(payload)
+            if event and event.get("status") in ["Vendida", "Gratuidade"]:
+                notify_sale(event, action="concluída")
+                set_pending_sale_dialog(event)
+            else:
+                st.success('Mesa salva.')
             st.rerun()
 
 
@@ -1504,8 +1747,12 @@ def page_ingressos():
             st.session_state.show_grat_ingresso = True
             st.rerun()
         else:
-            salvar_ingresso(payload)
-            st.success('Ingresso salvo.')
+            event = salvar_ingresso(payload)
+            if event:
+                notify_sale(event, action="concluída")
+                set_pending_sale_dialog(event)
+            else:
+                st.success('Ingresso salvo.')
             st.rerun()
     st.markdown('### Histórico')
     st.dataframe(st.session_state.ingressos, use_container_width=True, hide_index=True)
@@ -2553,3 +2800,7 @@ else:
         dialog_gratuidade('mesa')
     if st.session_state.show_grat_ingresso:
         dialog_gratuidade('ingresso')
+    if st.session_state.show_sale_dialog and not st.session_state.show_cancel_sale_dialog:
+        dialog_venda_concluida()
+    if st.session_state.show_cancel_sale_dialog:
+        dialog_cancelar_venda()
