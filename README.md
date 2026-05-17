@@ -316,3 +316,24 @@ Isso evita o erro 429 de quota de leitura em uso normal.
 
 Foram adicionadas chaves únicas (`key`) em todos os botões de download.
 Isso corrige o erro de ID duplicado que aparecia na área de Usuários cadastrados.
+
+
+## Correção: Google Sheets ultra leve
+
+Esta versão troca várias leituras separadas por uma leitura em lote com `values_batch_get`.
+Também desativa a importação automática inicial para evitar quota 429.
+
+Agora:
+- lê Mesas, Ingressos, Usuarios, Configuracoes e MapaMesas em uma chamada só;
+- mantém cache por 120 segundos;
+- grava quando necessário e limpa o cache;
+- importação local para a planilha virou botão manual no Painel Master.
+
+Se aparecer 429, aguarde 2 a 5 minutos para a quota do Google liberar.
+
+
+## Correção: RecursionError ao salvar posições das mesas
+
+Corrigido erro na função `save_table_coordinates`.
+A função estava chamando ela mesma repetidamente, causando `RecursionError`.
+Agora ela salva diretamente em `assets/mesa_coords.json` e depois envia para a aba `MapaMesas` do Google Sheets.

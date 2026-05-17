@@ -100,8 +100,7 @@ def using_google_sheets():
 @st.cache_resource(show_spinner=False)
 def get_worksheet_cached(title, headers_tuple):
     """
-    Cacheia o objeto da aba para não consultar a lista de abas toda hora.
-    Isso reduz muito as chamadas à API e evita quota 429.
+    Cacheia o objeto da aba. Só mexe em cabeçalho quando precisa escrever/criar.
     """
     headers = list(headers_tuple)
     sh = get_google_spreadsheet()
@@ -111,43 +110,87 @@ def get_worksheet_cached(title, headers_tuple):
     try:
         ws = sh.worksheet(title)
     except Exception:
-        # Somente se não encontrou, tentamos criar.
         try:
             ws = sh.add_worksheet(title=title, rows=300, cols=max(10, len(headers) + 2))
+            ws.update("A1", [headers])
         except Exception:
-            # Se a aba já existia e houve conflito, tenta pegar novamente.
             ws = sh.worksheet(title)
-
-    # Garante cabeçalho sem limpar dados.
-    existing = ws.row_values(1)
-    if not existing:
-        ws.update("A1", [headers])
-    elif existing[:len(headers)] != headers:
-        ws.update("A1", [headers])
 
     return ws
 
 
-@st.cache_data(ttl=20, show_spinner=False)
-def sheet_rows_cached(title, headers_tuple):
+@st.cache_data(ttl=120, show_spinner=False)
+def google_sheets_bulk_read_cache():
     """
-    Lê a aba com cache curto.
-    TTL 20s evita que cada renderização do Streamlit faça várias leituras.
+    Lê todas as abas principais em UMA chamada de leitura.
+    Isso reduz drasticamente o erro 429 de quota.
     """
-    headers = list(headers_tuple)
-    ws = get_worksheet_cached(title, tuple(headers))
-    if ws is None:
+    sh = get_google_spreadsheet()
+    if sh is None:
+        return {}
+
+    ranges = [
+        f"{SHEET_MESAS}!A:Z",
+        f"{SHEET_INGRESSOS}!A:Z",
+        f"{SHEET_USUARIOS}!A:Z",
+        f"{SHEET_CONFIG}!A:Z",
+        f"{SHEET_MAPA}!A:Z",
+    ]
+
+    try:
+        result = sh.values_batch_get(ranges)
+    except Exception:
+        # fallback compatível com versões diferentes do gspread
+        result = sh.client.values_batch_get(sh.id, ranges=ranges)
+
+    data = {}
+    value_ranges = result.get("valueRanges", [])
+    names = [SHEET_MESAS, SHEET_INGRESSOS, SHEET_USUARIOS, SHEET_CONFIG, SHEET_MAPA]
+
+    for name, vr in zip(names, value_ranges):
+        values = vr.get("values", [])
+        data[name] = values
+
+    return data
+
+
+def rows_from_values(values, headers):
+    if not values:
         return []
-    values = ws.get_all_records()
+
+    first = values[0]
+    if first[:len(headers)] == headers:
+        body = values[1:]
+    else:
+        body = values
+
     rows = []
-    for row in values:
-        rows.append({col: str(row.get(col, "")) for col in headers})
+    for line in body:
+        row = {}
+        for i, col in enumerate(headers):
+            row[col] = str(line[i]) if i < len(line) else ""
+        # ignora linha totalmente vazia
+        if any(str(v).strip() for v in row.values()):
+            rows.append(row)
     return rows
+
+
+def sheet_rows(title, headers):
+    """
+    Lê usando cache em lote.
+    Se a quota estourar, cai para local sem tentar várias vezes.
+    """
+    try:
+        all_data = google_sheets_bulk_read_cache()
+        values = all_data.get(title, [])
+        return rows_from_values(values, headers)
+    except Exception as e:
+        raise e
 
 
 def clear_sheet_cache():
     try:
-        sheet_rows_cached.clear()
+        google_sheets_bulk_read_cache.clear()
     except Exception:
         pass
     try:
@@ -156,16 +199,8 @@ def clear_sheet_cache():
         pass
 
 
-def get_or_create_worksheet(title, headers):
-    return get_worksheet_cached(title, tuple(headers))
-
-
-def sheet_rows(title, headers):
-    return sheet_rows_cached(title, tuple(headers))
-
-
 def sheet_write_rows(title, headers, rows):
-    ws = get_or_create_worksheet(title, headers)
+    ws = get_worksheet_cached(title, tuple(headers))
     if ws is None:
         return False
 
@@ -173,7 +208,6 @@ def sheet_write_rows(title, headers, rows):
     for row in rows:
         values.append([str(row.get(col, "")) for col in headers])
 
-    # Atualiza a aba em poucas chamadas. Evita clear + update separados quando possível.
     ws.clear()
     if values:
         ws.update("A1", values)
@@ -257,8 +291,8 @@ def sheet_coords_save(coords):
 
 def import_local_data_to_google_if_empty():
     """
-    Primeiro uso: se a planilha estiver vazia, sobe os dados locais atuais.
-    Roda no máximo uma vez por sessão para não estourar quota.
+    Importação inicial manual/econômica.
+    Não deve ficar rodando em toda abertura para não estourar quota.
     """
     if not using_google_sheets():
         return
@@ -300,9 +334,7 @@ def import_local_data_to_google_if_empty():
                 sheet_coords_save(local_coords)
 
         except Exception as e:
-            # Não travar o app por importação inicial
-            st.warning(f"Falha ao inicializar aba {title} no Google Sheets: {e}")
-
+            warn_once(f"init_{title}", f"Falha ao inicializar aba {title} no Google Sheets: {e}")
 
 
 def warn_once(key, message):
@@ -948,11 +980,8 @@ def init_files():
     if not INGRESSOS_PATH.exists():
         write_csv_rows(INGRESSOS_PATH, INGRESSOS_COLUMNS, [])
 
-    if google_sheets_configured():
-        try:
-            import_local_data_to_google_if_empty()
-        except Exception as e:
-            warn_once("gs_init", f"Google Sheets configurado, mas houve falha ao inicializar o banco: {e}")
+    # Importação inicial automática desativada para evitar quota 429.
+    # Use o botão no Painel Master > Usuários e mesas quando necessário.
 
 
 def get_total_tables():
@@ -1073,8 +1102,17 @@ def load_table_coordinates():
 
 
 def save_table_coordinates(coords):
+    """
+    Salva as coordenadas das mesas no arquivo local e, se configurado,
+    também na aba MapaMesas do Google Sheets.
+
+    Correção:
+    A versão anterior chamava save_table_coordinates(coords) dentro dela mesma,
+    gerando RecursionError. Agora grava diretamente no arquivo.
+    """
     MAP_COORDS_PATH.parent.mkdir(exist_ok=True)
-    save_table_coordinates(coords)
+    MAP_COORDS_PATH.write_text(json.dumps(coords, ensure_ascii=False, indent=2), encoding="utf-8")
+
     if google_sheets_configured():
         try:
             sheet_coords_save(coords)
@@ -2313,10 +2351,19 @@ def page_master():
         st.markdown("### Banco de dados atual")
         if using_google_sheets():
             st.success("Banco principal conectado ao Google Sheets/Drive. As vendas, usuários, configurações e mapa das mesas estão sendo salvos na planilha.")
-            if st.button("🔄 Atualizar dados do Google Sheets agora", use_container_width=True):
-                clear_sheet_cache()
-                st.success("Cache limpo. Os dados serão relidos do Google Sheets.")
-                st.rerun()
+            col_sync1, col_sync2 = st.columns(2)
+            with col_sync1:
+                if st.button("🔄 Atualizar dados do Google Sheets agora", use_container_width=True):
+                    clear_sheet_cache()
+                    st.success("Cache limpo. Os dados serão relidos do Google Sheets.")
+                    st.rerun()
+            with col_sync2:
+                if st.button("📤 Importar dados locais para planilha", use_container_width=True):
+                    st.session_state["_google_import_checked"] = False
+                    import_local_data_to_google_if_empty()
+                    clear_sheet_cache()
+                    st.success("Importação inicial concluída/verificada.")
+                    st.rerun()
         else:
             st.warning(
                 "Google Sheets ainda não configurado. O sistema está usando arquivos locais: "
