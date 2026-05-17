@@ -97,67 +97,45 @@ def using_google_sheets():
     return get_google_spreadsheet() is not None
 
 
-def get_or_create_worksheet(title, headers):
+@st.cache_resource(show_spinner=False)
+def get_worksheet_cached(title, headers_tuple):
     """
-    Busca a aba pelo nome. Se ela não existir, cria.
-
-    Correção:
-    Em alguns casos o Google Sheets retorna erro no add_worksheet dizendo que a aba
-    já existe, mesmo depois de worksheet(title) falhar. Por isso primeiro varremos
-    a lista de worksheets e, se add_worksheet falhar por "already exists",
-    recarregamos a lista e tentamos encontrar a aba novamente.
+    Cacheia o objeto da aba para não consultar a lista de abas toda hora.
+    Isso reduz muito as chamadas à API e evita quota 429.
     """
+    headers = list(headers_tuple)
     sh = get_google_spreadsheet()
     if sh is None:
         return None
 
-    def find_existing():
-        try:
-            for worksheet in sh.worksheets():
-                if worksheet.title.strip().lower() == title.strip().lower():
-                    return worksheet
-        except Exception:
-            pass
-        return None
-
-    ws = find_existing()
-
-    if ws is None:
-        try:
-            ws = sh.worksheet(title)
-        except Exception:
-            ws = None
-
-    if ws is None:
+    try:
+        ws = sh.worksheet(title)
+    except Exception:
+        # Somente se não encontrou, tentamos criar.
         try:
             ws = sh.add_worksheet(title=title, rows=300, cols=max(10, len(headers) + 2))
-        except Exception as e:
-            # Caso clássico do erro: "A sheet with the name X already exists"
-            ws = find_existing()
-            if ws is None:
-                try:
-                    ws = sh.worksheet(title)
-                except Exception:
-                    raise e
+        except Exception:
+            # Se a aba já existia e houve conflito, tenta pegar novamente.
+            ws = sh.worksheet(title)
 
-    # Garante cabeçalho sem apagar dados quando já existe conteúdo válido.
-    try:
-        existing = ws.row_values(1)
-    except Exception:
-        existing = []
-
+    # Garante cabeçalho sem limpar dados.
+    existing = ws.row_values(1)
     if not existing:
         ws.update("A1", [headers])
     elif existing[:len(headers)] != headers:
-        # Se a aba foi criada manualmente ou ficou com cabeçalho ruim,
-        # só substituímos a primeira linha. Não limpamos a aba inteira.
         ws.update("A1", [headers])
 
     return ws
 
 
-def sheet_rows(title, headers):
-    ws = get_or_create_worksheet(title, headers)
+@st.cache_data(ttl=20, show_spinner=False)
+def sheet_rows_cached(title, headers_tuple):
+    """
+    Lê a aba com cache curto.
+    TTL 20s evita que cada renderização do Streamlit faça várias leituras.
+    """
+    headers = list(headers_tuple)
+    ws = get_worksheet_cached(title, tuple(headers))
     if ws is None:
         return []
     values = ws.get_all_records()
@@ -167,16 +145,40 @@ def sheet_rows(title, headers):
     return rows
 
 
+def clear_sheet_cache():
+    try:
+        sheet_rows_cached.clear()
+    except Exception:
+        pass
+    try:
+        get_worksheet_cached.clear()
+    except Exception:
+        pass
+
+
+def get_or_create_worksheet(title, headers):
+    return get_worksheet_cached(title, tuple(headers))
+
+
+def sheet_rows(title, headers):
+    return sheet_rows_cached(title, tuple(headers))
+
+
 def sheet_write_rows(title, headers, rows):
     ws = get_or_create_worksheet(title, headers)
     if ws is None:
         return False
+
     values = [headers]
     for row in rows:
         values.append([str(row.get(col, "")) for col in headers])
+
+    # Atualiza a aba em poucas chamadas. Evita clear + update separados quando possível.
     ws.clear()
     if values:
-        ws.update(values)
+        ws.update("A1", values)
+
+    clear_sheet_cache()
     return True
 
 
@@ -256,46 +258,58 @@ def sheet_coords_save(coords):
 def import_local_data_to_google_if_empty():
     """
     Primeiro uso: se a planilha estiver vazia, sobe os dados locais atuais.
-    Assim você não perde o que já veio no GitHub.
+    Roda no máximo uma vez por sessão para não estourar quota.
     """
     if not using_google_sheets():
         return
 
-    # Mesas
-    if not sheet_rows(SHEET_MESAS, MESAS_COLUMNS):
-        local_mesas = read_csv_rows(MESAS_PATH, MESAS_COLUMNS)
-        if local_mesas:
-            sheet_write_rows(SHEET_MESAS, MESAS_COLUMNS, local_mesas)
+    if st.session_state.get("_google_import_checked", False):
+        return
 
-    # Ingressos
-    if not sheet_rows(SHEET_INGRESSOS, INGRESSOS_COLUMNS):
-        local_ing = read_csv_rows(INGRESSOS_PATH, INGRESSOS_COLUMNS)
-        if local_ing:
-            sheet_write_rows(SHEET_INGRESSOS, INGRESSOS_COLUMNS, local_ing)
+    st.session_state["_google_import_checked"] = True
 
-    # Usuários
-    if not sheet_rows(SHEET_USUARIOS, USUARIOS_COLUMNS) and USERS_PATH.exists():
+    checks = [
+        (SHEET_MESAS, MESAS_COLUMNS, MESAS_PATH, "csv"),
+        (SHEET_INGRESSOS, INGRESSOS_COLUMNS, INGRESSOS_PATH, "csv"),
+        (SHEET_USUARIOS, USUARIOS_COLUMNS, USERS_PATH, "auth"),
+        (SHEET_CONFIG, CONFIG_COLUMNS, CONFIG_PATH, "config"),
+        (SHEET_MAPA, MAPA_COLUMNS, MAP_COORDS_PATH, "coords"),
+    ]
+
+    for title, headers, local_path, kind in checks:
         try:
-            local_auth = json.loads(USERS_PATH.read_text(encoding="utf-8"))
-            sheet_auth_save(local_auth)
-        except Exception:
-            pass
+            current = sheet_rows(title, headers)
+            if current:
+                continue
 
-    # Config
-    if not sheet_rows(SHEET_CONFIG, CONFIG_COLUMNS) and CONFIG_PATH.exists():
-        try:
-            local_cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-            sheet_config_save(local_cfg)
-        except Exception:
-            pass
+            if kind == "csv" and local_path.exists():
+                local_rows = read_csv_rows(local_path, headers)
+                if local_rows:
+                    sheet_write_rows(title, headers, local_rows)
 
-    # Mapa
-    if not sheet_rows(SHEET_MAPA, MAPA_COLUMNS) and MAP_COORDS_PATH.exists():
-        try:
-            local_coords = json.loads(MAP_COORDS_PATH.read_text(encoding="utf-8"))
-            sheet_coords_save(local_coords)
-        except Exception:
-            pass
+            elif kind == "auth" and local_path.exists():
+                local_auth = json.loads(local_path.read_text(encoding="utf-8"))
+                sheet_auth_save(local_auth)
+
+            elif kind == "config" and local_path.exists():
+                local_cfg = json.loads(local_path.read_text(encoding="utf-8"))
+                sheet_config_save(local_cfg)
+
+            elif kind == "coords" and local_path.exists():
+                local_coords = json.loads(local_path.read_text(encoding="utf-8"))
+                sheet_coords_save(local_coords)
+
+        except Exception as e:
+            # Não travar o app por importação inicial
+            st.warning(f"Falha ao inicializar aba {title} no Google Sheets: {e}")
+
+
+
+def warn_once(key, message):
+    session_key = f"_warned_{key}"
+    if not st.session_state.get(session_key, False):
+        st.session_state[session_key] = True
+        st.warning(message)
 
 
 
@@ -337,7 +351,7 @@ def load_config():
             base.update(cfg)
             return base
         except Exception as e:
-            st.warning(f"Falha ao ler Configuracoes no Google Sheets. Usando arquivo local. Detalhe: {e}")
+            warn_once("gs_config_read", f"Falha ao ler Configuracoes no Google Sheets. Usando arquivo local. Detalhe: {e}")
 
     if not CONFIG_PATH.exists():
         cfg = default_config()
@@ -361,7 +375,7 @@ def save_config(cfg):
         try:
             sheet_config_save(base)
         except Exception as e:
-            st.warning(f"Falha ao salvar Configuracoes no Google Sheets. Salvando local. Detalhe: {e}")
+            warn_once("gs_config_save", f"Falha ao salvar Configuracoes no Google Sheets. Salvando local. Detalhe: {e}")
 
     CONFIG_PATH.write_text(json.dumps(base, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -874,7 +888,7 @@ def load_auth_data():
                 sheet_auth_save(raw)
             return raw
         except Exception as e:
-            st.warning(f"Falha ao ler Usuarios no Google Sheets. Usando arquivo local. Detalhe: {e}")
+            warn_once("gs_users_read", f"Falha ao ler Usuarios no Google Sheets. Usando arquivo local. Detalhe: {e}")
 
     if not USERS_PATH.exists():
         data = {'users': {u: {'password_hash': '', 'is_admin': (u == 'Adm')} for u in USUARIOS_PADRAO}, 'meta': {'last_user': ''}}
@@ -906,7 +920,7 @@ def save_auth_data(data):
         try:
             sheet_auth_save(data)
         except Exception as e:
-            st.warning(f"Falha ao salvar Usuarios no Google Sheets. Salvando local. Detalhe: {e}")
+            warn_once("gs_users_save", f"Falha ao salvar Usuarios no Google Sheets. Salvando local. Detalhe: {e}")
 
     USERS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
 
@@ -938,7 +952,7 @@ def init_files():
         try:
             import_local_data_to_google_if_empty()
         except Exception as e:
-            st.warning(f"Google Sheets configurado, mas houve falha ao inicializar o banco: {e}")
+            warn_once("gs_init", f"Google Sheets configurado, mas houve falha ao inicializar o banco: {e}")
 
 
 def get_total_tables():
@@ -956,7 +970,7 @@ def load_all_mesas():
             if rows:
                 return rows
         except Exception as e:
-            st.warning(f"Falha ao ler Mesas no Google Sheets. Usando arquivo local. Detalhe: {e}")
+            warn_once("gs_mesas_read", f"Falha ao ler Mesas no Google Sheets. Usando arquivo local. Detalhe: {e}")
     return read_csv_rows(MESAS_PATH, MESAS_COLUMNS)
 
 
@@ -979,7 +993,7 @@ def save_mesas(rows):
         try:
             sheet_write_rows(SHEET_MESAS, MESAS_COLUMNS, rows)
         except Exception as e:
-            st.warning(f"Falha ao salvar Mesas no Google Sheets. Detalhe: {e}")
+            warn_once("gs_mesas_save", f"Falha ao salvar Mesas no Google Sheets. Detalhe: {e}")
 
 
 def load_ingressos():
@@ -987,7 +1001,7 @@ def load_ingressos():
         try:
             return sheet_rows(SHEET_INGRESSOS, INGRESSOS_COLUMNS)
         except Exception as e:
-            st.warning(f"Falha ao ler Ingressos no Google Sheets. Usando arquivo local. Detalhe: {e}")
+            warn_once("gs_ingressos_read", f"Falha ao ler Ingressos no Google Sheets. Usando arquivo local. Detalhe: {e}")
     return read_csv_rows(INGRESSOS_PATH, INGRESSOS_COLUMNS)
 
 
@@ -997,7 +1011,7 @@ def save_ingressos(rows):
         try:
             sheet_write_rows(SHEET_INGRESSOS, INGRESSOS_COLUMNS, rows)
         except Exception as e:
-            st.warning(f"Falha ao salvar Ingressos no Google Sheets. Detalhe: {e}")
+            warn_once("gs_ingressos_save", f"Falha ao salvar Ingressos no Google Sheets. Detalhe: {e}")
 
 
 def refresh_data():
@@ -1036,7 +1050,7 @@ def load_table_coordinates():
         try:
             coords = sheet_coords_load()
         except Exception as e:
-            st.warning(f"Falha ao ler MapaMesas no Google Sheets. Usando arquivo local. Detalhe: {e}")
+            warn_once("gs_mapa_read", f"Falha ao ler MapaMesas no Google Sheets. Usando arquivo local. Detalhe: {e}")
 
     if not coords:
         if MAP_COORDS_PATH.exists():
@@ -1065,7 +1079,7 @@ def save_table_coordinates(coords):
         try:
             sheet_coords_save(coords)
         except Exception as e:
-            st.warning(f"Falha ao salvar MapaMesas no Google Sheets. Detalhe: {e}")
+            warn_once("gs_mapa_save", f"Falha ao salvar MapaMesas no Google Sheets. Detalhe: {e}")
 
 
 def table_colors(status):
@@ -2297,6 +2311,10 @@ def page_master():
         st.markdown("### Banco de dados atual")
         if using_google_sheets():
             st.success("Banco principal conectado ao Google Sheets/Drive. As vendas, usuários, configurações e mapa das mesas estão sendo salvos na planilha.")
+            if st.button("🔄 Atualizar dados do Google Sheets agora", use_container_width=True):
+                clear_sheet_cache()
+                st.success("Cache limpo. Os dados serão relidos do Google Sheets.")
+                st.rerun()
         else:
             st.warning(
                 "Google Sheets ainda não configurado. O sistema está usando arquivos locais: "

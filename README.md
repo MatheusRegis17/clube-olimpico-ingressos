@@ -297,3 +297,16 @@ Agora o sistema:
 - procura a aba existente antes de tentar criar;
 - se o Google retornar erro dizendo que já existe, recarrega as abas e usa a existente;
 - atualiza somente o cabeçalho da primeira linha, sem limpar a aba inteira.
+
+
+## Correção: velocidade e quota do Google Sheets
+
+Esta versão reduz drasticamente as chamadas para a API:
+- cacheia objetos das abas;
+- cacheia leituras por 20 segundos;
+- limpa o cache apenas após gravações;
+- a importação inicial roda no máximo uma vez por sessão;
+- avisos repetidos são exibidos só uma vez por sessão;
+- adiciona botão manual para atualizar dados do Google Sheets no Painel Master.
+
+Isso evita o erro 429 de quota de leitura em uso normal.
