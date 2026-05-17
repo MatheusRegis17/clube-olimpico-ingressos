@@ -310,3 +310,9 @@ Esta versão reduz drasticamente as chamadas para a API:
 - adiciona botão manual para atualizar dados do Google Sheets no Painel Master.
 
 Isso evita o erro 429 de quota de leitura em uso normal.
+
+
+## Correção: StreamlitDuplicateElementId
+
+Foram adicionadas chaves únicas (`key`) em todos os botões de download.
+Isso corrige o erro de ID duplicado que aparecia na área de Usuários cadastrados.

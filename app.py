@@ -1488,10 +1488,10 @@ def page_relatorios():
     st.subheader('📑 Relatórios')
     st.markdown('### Mesas')
     st.dataframe(st.session_state.mesas, use_container_width=True, hide_index=True)
-    st.download_button('Baixar mesas CSV', rows_to_csv_text(st.session_state.mesas, MESAS_COLUMNS).encode('utf-8-sig'), 'relatorio_mesas.csv', 'text/csv')
+    st.download_button('Baixar mesas CSV', rows_to_csv_text(st.session_state.mesas, MESAS_COLUMNS).encode('utf-8-sig'), 'relatorio_mesas.csv', 'text/csv', key='download_relatorio_mesas_csv')
     st.markdown('### Ingressos')
     st.dataframe(st.session_state.ingressos, use_container_width=True, hide_index=True)
-    st.download_button('Baixar ingressos CSV', rows_to_csv_text(st.session_state.ingressos, INGRESSOS_COLUMNS).encode('utf-8-sig'), 'relatorio_ingressos.csv', 'text/csv')
+    st.download_button('Baixar ingressos CSV', rows_to_csv_text(st.session_state.ingressos, INGRESSOS_COLUMNS).encode('utf-8-sig'), 'relatorio_ingressos.csv', 'text/csv', key='download_relatorio_ingressos_csv')
 
 
 
@@ -2025,7 +2025,8 @@ def page_master():
             json.dumps(cfg, ensure_ascii=False, indent=2).encode("utf-8"),
             file_name="config.json",
             mime="application/json",
-            use_container_width=True
+            use_container_width=True,
+            key="download_config_aparencia"
         )
 
         with st.expander("Como deixar a aparência permanente após reiniciar"):
@@ -2107,7 +2108,8 @@ def page_master():
                 MAP_COORDS_PATH.read_bytes() if MAP_COORDS_PATH.exists() else b"[]",
                 "mesa_coords.json",
                 "application/json",
-                use_container_width=True
+                use_container_width=True,
+                key="download_mesa_coords_mapa"
             )
 
     with aba4:
@@ -2323,13 +2325,13 @@ def page_master():
             )
         db1, db2, db3, db4 = st.columns(4)
         if MESAS_PATH.exists():
-            db1.download_button("Baixar mesas.csv", MESAS_PATH.read_bytes(), "mesas.csv", "text/csv", use_container_width=True)
+            db1.download_button("Baixar mesas.csv", MESAS_PATH.read_bytes(), "mesas.csv", "text/csv", use_container_width=True, key="download_db_mesas_csv")
         if INGRESSOS_PATH.exists():
-            db2.download_button("Baixar ingressos.csv", INGRESSOS_PATH.read_bytes(), "ingressos.csv", "text/csv", use_container_width=True)
+            db2.download_button("Baixar ingressos.csv", INGRESSOS_PATH.read_bytes(), "ingressos.csv", "text/csv", use_container_width=True, key="download_db_ingressos_csv")
         if USERS_PATH.exists():
-            db3.download_button("Baixar users.json", USERS_PATH.read_bytes(), "users.json", "application/json", use_container_width=True)
+            db3.download_button("Baixar users.json", USERS_PATH.read_bytes(), "users.json", "application/json", use_container_width=True, key="download_db_users_json")
         if CONFIG_PATH.exists():
-            db4.download_button("Baixar config.json", CONFIG_PATH.read_bytes(), "config.json", "application/json", use_container_width=True)
+            db4.download_button("Baixar config.json", CONFIG_PATH.read_bytes(), "config.json", "application/json", use_container_width=True, key="download_db_config_json")
 
         st.markdown("### Usuários do sistema")
         auth = load_auth_data()
@@ -2402,7 +2404,8 @@ def page_master():
             json.dumps(auth, ensure_ascii=False, indent=2).encode("utf-8"),
             file_name="users.json",
             mime="application/json",
-            use_container_width=True
+            use_container_width=True,
+            key="download_users_json_admin"
         )
 
         st.markdown("---")
@@ -2469,7 +2472,8 @@ def page_master():
             json.dumps(load_config(), ensure_ascii=False, indent=2).encode("utf-8"),
             file_name="config.json",
             mime="application/json",
-            use_container_width=True
+            use_container_width=True,
+            key="download_config_json_mesas"
         )
 
         st.caption(
