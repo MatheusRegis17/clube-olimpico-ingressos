@@ -8,5 +8,15 @@
   "map_table_height": 20,
   "map_table_radius": 22,
   "map_zoom": 100,
-  "total_tables": 100
+  "total_tables": 100,
+  "base_font_size": 16,
+  "mobile_font_size": 18,
+  "font_weight": 700,
+  "text_color": "#ffffff",
+  "muted_text_color": "#dbe7ff",
+  "panel_bg_opacity": 86,
+  "input_bg_color": "#ffffff",
+  "input_text_color": "#111827",
+  "button_text_color": "#ffffff",
+  "text_shadow_strength": 45
 }

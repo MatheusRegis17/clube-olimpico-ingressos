@@ -11,6 +11,13 @@ from streamlit_drawable_canvas import st_canvas
 from streamlit_image_coordinates import streamlit_image_coordinates
 from PIL import Image, ImageDraw
 
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials
+except Exception:
+    gspread = None
+    Credentials = None
+
 st.set_page_config(page_title="Clube Olímpico Ingressos", page_icon="🎟️", layout="wide", initial_sidebar_state="expanded")
 
 BASE_DIR = Path(__file__).parent
@@ -33,6 +40,220 @@ USUARIOS_PADRAO = ["Secretaria Lucas", "Secretaria Juliana", "Adm", "Carla Curi"
 
 MESAS_COLUMNS = ["mesa","status","comprador","telefone","vendedor","pagamento","valor","data_hora","observacao"]
 INGRESSOS_COLUMNS = ["comprador","telefone","quantidade","vendedor","pagamento","total","data_hora","observacao"]
+MAPA_COLUMNS = ["mesa","x","y"]
+USUARIOS_COLUMNS = ["usuario","password_hash","is_admin"]
+CONFIG_COLUMNS = ["chave","valor"]
+SHEET_MESAS = "Mesas"
+SHEET_INGRESSOS = "Ingressos"
+SHEET_USUARIOS = "Usuarios"
+SHEET_CONFIG = "Configuracoes"
+SHEET_MAPA = "MapaMesas"
+
+
+
+def get_secret_value(key, default=""):
+    try:
+        return st.secrets.get(key, default)
+    except Exception:
+        return default
+
+
+def google_sheets_configured():
+    try:
+        return bool(get_secret_value("GOOGLE_SHEET_ID", "")) and ("google_service_account" in st.secrets)
+    except Exception:
+        return False
+
+
+@st.cache_resource(show_spinner=False)
+def get_google_spreadsheet():
+    """
+    Retorna o Spreadsheet configurado no Streamlit Secrets.
+    Se não houver secrets, retorna None e o app usa arquivo local como fallback.
+    """
+    if not google_sheets_configured():
+        return None
+
+    if gspread is None or Credentials is None:
+        raise RuntimeError("Bibliotecas Google não instaladas. Verifique requirements.txt.")
+
+    sheet_id = get_secret_value("GOOGLE_SHEET_ID", "")
+    service_info = dict(st.secrets["google_service_account"])
+
+    # Streamlit Secrets pode transformar \n em \\n dependendo da cópia.
+    if "private_key" in service_info:
+        service_info["private_key"] = service_info["private_key"].replace("\\n", "\n")
+
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive",
+    ]
+    credentials = Credentials.from_service_account_info(service_info, scopes=scopes)
+    client = gspread.authorize(credentials)
+    return client.open_by_key(sheet_id)
+
+
+def using_google_sheets():
+    return get_google_spreadsheet() is not None
+
+
+def get_or_create_worksheet(title, headers):
+    sh = get_google_spreadsheet()
+    if sh is None:
+        return None
+    try:
+        ws = sh.worksheet(title)
+    except Exception:
+        ws = sh.add_worksheet(title=title, rows=300, cols=max(10, len(headers) + 2))
+
+    existing = ws.row_values(1)
+    if existing[:len(headers)] != headers:
+        ws.clear()
+        ws.update([headers])
+    return ws
+
+
+def sheet_rows(title, headers):
+    ws = get_or_create_worksheet(title, headers)
+    if ws is None:
+        return []
+    values = ws.get_all_records()
+    rows = []
+    for row in values:
+        rows.append({col: str(row.get(col, "")) for col in headers})
+    return rows
+
+
+def sheet_write_rows(title, headers, rows):
+    ws = get_or_create_worksheet(title, headers)
+    if ws is None:
+        return False
+    values = [headers]
+    for row in rows:
+        values.append([str(row.get(col, "")) for col in headers])
+    ws.clear()
+    if values:
+        ws.update(values)
+    return True
+
+
+def sheet_config_load():
+    rows = sheet_rows(SHEET_CONFIG, CONFIG_COLUMNS)
+    cfg = {}
+    for row in rows:
+        k = row.get("chave", "")
+        if not k:
+            continue
+        v = row.get("valor", "")
+        try:
+            cfg[k] = json.loads(v)
+        except Exception:
+            cfg[k] = v
+    return cfg
+
+
+def sheet_config_save(cfg):
+    rows = []
+    for k, v in cfg.items():
+        rows.append({"chave": k, "valor": json.dumps(v, ensure_ascii=False)})
+    return sheet_write_rows(SHEET_CONFIG, CONFIG_COLUMNS, rows)
+
+
+def sheet_auth_load():
+    rows = sheet_rows(SHEET_USUARIOS, USUARIOS_COLUMNS)
+    data = {"users": {}, "meta": {"last_user": ""}}
+    for row in rows:
+        usuario = row.get("usuario", "").strip()
+        if not usuario:
+            continue
+        data["users"][usuario] = {
+            "password_hash": row.get("password_hash", ""),
+            "is_admin": str(row.get("is_admin", "")).lower() in ["true", "1", "sim", "yes"],
+        }
+    return data
+
+
+def sheet_auth_save(data):
+    rows = []
+    for usuario, info in data.get("users", {}).items():
+        rows.append({
+            "usuario": usuario,
+            "password_hash": info.get("password_hash", ""),
+            "is_admin": "TRUE" if info.get("is_admin", False) else "FALSE",
+        })
+    return sheet_write_rows(SHEET_USUARIOS, USUARIOS_COLUMNS, rows)
+
+
+def sheet_coords_load():
+    rows = sheet_rows(SHEET_MAPA, MAPA_COLUMNS)
+    coords = []
+    for row in rows:
+        try:
+            coords.append({
+                "mesa": int(row.get("mesa", 0)),
+                "x": int(float(row.get("x", 0))),
+                "y": int(float(row.get("y", 0))),
+            })
+        except Exception:
+            pass
+    return coords
+
+
+def sheet_coords_save(coords):
+    rows = []
+    for item in coords:
+        rows.append({
+            "mesa": str(item.get("mesa", "")),
+            "x": str(item.get("x", "")),
+            "y": str(item.get("y", "")),
+        })
+    return sheet_write_rows(SHEET_MAPA, MAPA_COLUMNS, rows)
+
+
+def import_local_data_to_google_if_empty():
+    """
+    Primeiro uso: se a planilha estiver vazia, sobe os dados locais atuais.
+    Assim você não perde o que já veio no GitHub.
+    """
+    if not using_google_sheets():
+        return
+
+    # Mesas
+    if not sheet_rows(SHEET_MESAS, MESAS_COLUMNS):
+        local_mesas = read_csv_rows(MESAS_PATH, MESAS_COLUMNS)
+        if local_mesas:
+            sheet_write_rows(SHEET_MESAS, MESAS_COLUMNS, local_mesas)
+
+    # Ingressos
+    if not sheet_rows(SHEET_INGRESSOS, INGRESSOS_COLUMNS):
+        local_ing = read_csv_rows(INGRESSOS_PATH, INGRESSOS_COLUMNS)
+        if local_ing:
+            sheet_write_rows(SHEET_INGRESSOS, INGRESSOS_COLUMNS, local_ing)
+
+    # Usuários
+    if not sheet_rows(SHEET_USUARIOS, USUARIOS_COLUMNS) and USERS_PATH.exists():
+        try:
+            local_auth = json.loads(USERS_PATH.read_text(encoding="utf-8"))
+            sheet_auth_save(local_auth)
+        except Exception:
+            pass
+
+    # Config
+    if not sheet_rows(SHEET_CONFIG, CONFIG_COLUMNS) and CONFIG_PATH.exists():
+        try:
+            local_cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            sheet_config_save(local_cfg)
+        except Exception:
+            pass
+
+    # Mapa
+    if not sheet_rows(SHEET_MAPA, MAPA_COLUMNS) and MAP_COORDS_PATH.exists():
+        try:
+            local_coords = json.loads(MAP_COORDS_PATH.read_text(encoding="utf-8"))
+            sheet_coords_save(local_coords)
+        except Exception:
+            pass
+
 
 
 def default_config():
@@ -44,11 +265,37 @@ def default_config():
         "card_opacity": 90,
         "map_table_width": 32,
         "map_table_height": 20,
+        "map_table_radius": 22,
+        "map_zoom": 100,
+        "total_tables": 100,
+        "base_font_size": 16,
+        "mobile_font_size": 18,
+        "font_weight": 700,
+        "text_color": "#ffffff",
+        "muted_text_color": "#dbe7ff",
+        "panel_bg_opacity": 86,
+        "input_bg_color": "#ffffff",
+        "input_text_color": "#111827",
+        "button_text_color": "#ffffff",
+        "text_shadow_strength": 45,
     }
 
 
 def load_config():
     DATA_DIR.mkdir(exist_ok=True)
+
+    if google_sheets_configured():
+        try:
+            cfg = sheet_config_load()
+            if not cfg:
+                cfg = default_config()
+                sheet_config_save(cfg)
+            base = default_config()
+            base.update(cfg)
+            return base
+        except Exception as e:
+            st.warning(f"Falha ao ler Configuracoes no Google Sheets. Usando arquivo local. Detalhe: {e}")
+
     if not CONFIG_PATH.exists():
         cfg = default_config()
         CONFIG_PATH.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -66,6 +313,13 @@ def save_config(cfg):
     DATA_DIR.mkdir(exist_ok=True)
     base = default_config()
     base.update(cfg)
+
+    if google_sheets_configured():
+        try:
+            sheet_config_save(base)
+        except Exception as e:
+            st.warning(f"Falha ao salvar Configuracoes no Google Sheets. Salvando local. Detalhe: {e}")
+
     CONFIG_PATH.write_text(json.dumps(base, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -158,6 +412,16 @@ bg_blur = max(0, min(20, int(config.get("background_blur", 0))))
 primary_color = config.get("primary_color", "#2f6bff")
 card_alpha = max(20, min(98, int(config.get("card_opacity", 90)))) / 100
 bg_position = config.get("background_position", "center center")
+base_font_size = max(12, min(24, int(config.get("base_font_size", 16))))
+mobile_font_size = max(14, min(28, int(config.get("mobile_font_size", 18))))
+font_weight = max(300, min(950, int(config.get("font_weight", 700))))
+text_color = config.get("text_color", "#ffffff")
+muted_text_color = config.get("muted_text_color", "#dbe7ff")
+panel_bg_opacity = max(20, min(98, int(config.get("panel_bg_opacity", 86)))) / 100
+input_bg_color = config.get("input_bg_color", "#ffffff")
+input_text_color = config.get("input_text_color", "#111827")
+button_text_color = config.get("button_text_color", "#ffffff")
+text_shadow_strength = max(0, min(100, int(config.get("text_shadow_strength", 45)))) / 100
 
 
 st.markdown(f"""
@@ -378,6 +642,85 @@ h1, h2, h3, h4, h5, h6, p, label, span {{
 .mesa-vendida {{ background: linear-gradient(180deg, #dc3f45, #b12024); color: white; }}
 .mesa-cancelada {{ background: linear-gradient(180deg, #5b6476, #404858); color: white; }}
 .mesa-gratuidade {{ background: linear-gradient(180deg, #845ef7, #5f3dc4); color: white; }}
+
+/* ===== Controles de fonte e leitura ===== */
+html, body, .stApp, [data-testid="stAppViewContainer"] {{
+    font-size: {base_font_size}px !important;
+    color: {text_color} !important;
+}}
+
+.block-container {{
+    background: linear-gradient(135deg, rgba(3,8,20,{panel_bg_opacity}), rgba(9,19,38,{max(0.40, panel_bg_opacity - 0.14)})) !important;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 26px;
+    box-shadow: 0 24px 70px rgba(0,0,0,0.42);
+    backdrop-filter: blur(8px);
+}}
+
+h1, h2, h3, h4, h5, h6, p, label, span, div {{
+    color: {text_color} !important;
+    font-weight: {font_weight} !important;
+    text-shadow: 0 1px 8px rgba(0,0,0,{text_shadow_strength}) !important;
+}}
+
+[data-testid="stCaptionContainer"], .small-note, .subtitle, .login-card-subtitle, .login-desc {{
+    color: {muted_text_color} !important;
+}}
+
+.hero, .glass-card, .event-card, .map-card, [data-testid="stMetric"] {{
+    background: linear-gradient(135deg, rgba(7,13,28,{panel_bg_opacity}), rgba(13,27,54,{max(0.50, panel_bg_opacity - 0.12)})) !important;
+    border: 1px solid rgba(255,255,255,0.18) !important;
+    box-shadow: 0 18px 46px rgba(0,0,0,0.42) !important;
+    backdrop-filter: blur(14px) !important;
+}}
+
+section[data-testid="stSidebar"] {{
+    background: linear-gradient(180deg, rgba(4,10,20,0.95), rgba(7,17,31,0.97)) !important;
+    border-right: 1px solid rgba(255,255,255,0.13);
+    backdrop-filter: blur(14px);
+}}
+
+div[data-baseweb="select"] > div,
+div[data-testid="stTextInput"] input,
+div[data-testid="stNumberInput"] input,
+textarea {{
+    background: {input_bg_color} !important;
+    color: {input_text_color} !important;
+    font-size: {base_font_size}px !important;
+    font-weight: {font_weight} !important;
+}}
+
+div[data-testid="stFormSubmitButton"] button,
+.stButton > button,
+div[data-testid="stDownloadButton"] button {{
+    color: {button_text_color} !important;
+    font-size: {base_font_size}px !important;
+    font-weight: 850 !important;
+}}
+
+@media (max-width: 768px) {{
+    html, body, .stApp, [data-testid="stAppViewContainer"] {{
+        font-size: {mobile_font_size}px !important;
+    }}
+    .block-container {{
+        padding-left: 0.8rem !important;
+        padding-right: 0.8rem !important;
+        border-radius: 18px !important;
+    }}
+    h1, .title, .login-title-main {{
+        font-size: 1.65rem !important;
+    }}
+    h2, h3 {{
+        font-size: 1.35rem !important;
+    }}
+    div[data-testid="stMetricValue"] {{
+        font-size: 1.55rem !important;
+    }}
+    .stButton > button, div[data-testid="stFormSubmitButton"] button {{
+        min-height: 52px !important;
+    }}
+}}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -458,7 +801,38 @@ def write_csv_rows(path, columns, rows):
             writer.writerow({col: row.get(col, '') for col in columns})
 
 
+def normalize_auth_data(raw):
+    raw.setdefault('users', {})
+    raw.setdefault('meta', {})
+    raw['meta'].setdefault('last_user', '')
+
+    for u in USUARIOS_PADRAO:
+        raw['users'].setdefault(u, {'password_hash': '', 'is_admin': (u == 'Adm')})
+        raw['users'][u].setdefault('password_hash', '')
+        raw['users'][u].setdefault('is_admin', (u == 'Adm'))
+
+    for u, info in list(raw['users'].items()):
+        if not isinstance(info, dict):
+            raw['users'][u] = {'password_hash': '', 'is_admin': (u == 'Adm')}
+        else:
+            info.setdefault('password_hash', '')
+            info.setdefault('is_admin', (u == 'Adm'))
+
+    return raw
+
+
 def load_auth_data():
+    if google_sheets_configured():
+        try:
+            raw = sheet_auth_load()
+            raw = normalize_auth_data(raw)
+            if not raw.get("users"):
+                raw = normalize_auth_data({'users': {u: {'password_hash': '', 'is_admin': (u == 'Adm')} for u in USUARIOS_PADRAO}, 'meta': {'last_user': ''}})
+                sheet_auth_save(raw)
+            return raw
+        except Exception as e:
+            st.warning(f"Falha ao ler Usuarios no Google Sheets. Usando arquivo local. Detalhe: {e}")
+
     if not USERS_PATH.exists():
         data = {'users': {u: {'password_hash': '', 'is_admin': (u == 'Adm')} for u in USUARIOS_PADRAO}, 'meta': {'last_user': ''}}
         USERS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -479,23 +853,19 @@ def load_auth_data():
         raw = new_raw
         USERS_PATH.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding='utf-8')
 
-    raw.setdefault('users', {})
-    raw.setdefault('meta', {})
-    raw['meta'].setdefault('last_user', '')
+    return normalize_auth_data(raw)
 
-    for u in USUARIOS_PADRAO:
-        raw['users'].setdefault(u, {'password_hash': '', 'is_admin': (u == 'Adm')})
-        raw['users'][u].setdefault('password_hash', '')
-        raw['users'][u].setdefault('is_admin', (u == 'Adm'))
 
-    for u, info in raw['users'].items():
-        if not isinstance(info, dict):
-            raw['users'][u] = {'password_hash': '', 'is_admin': False}
-        else:
-            info.setdefault('password_hash', '')
-            info.setdefault('is_admin', (u == 'Adm'))
+def save_auth_data(data):
+    data = normalize_auth_data(data)
 
-    return raw
+    if google_sheets_configured():
+        try:
+            sheet_auth_save(data)
+        except Exception as e:
+            st.warning(f"Falha ao salvar Usuarios no Google Sheets. Salvando local. Detalhe: {e}")
+
+    USERS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
 
 
 def is_admin_user(usuario=None):
@@ -507,10 +877,6 @@ def is_admin_user(usuario=None):
         return bool(auth.get('users', {}).get(usuario, {}).get('is_admin', False))
     except Exception:
         return False
-
-
-def save_auth_data(data):
-    USERS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
 
 
 def init_files():
@@ -525,6 +891,12 @@ def init_files():
     if not INGRESSOS_PATH.exists():
         write_csv_rows(INGRESSOS_PATH, INGRESSOS_COLUMNS, [])
 
+    if google_sheets_configured():
+        try:
+            import_local_data_to_google_if_empty()
+        except Exception as e:
+            st.warning(f"Google Sheets configurado, mas houve falha ao inicializar o banco: {e}")
+
 
 def get_total_tables():
     cfg = load_config()
@@ -535,12 +907,19 @@ def get_total_tables():
 
 
 def load_all_mesas():
+    if google_sheets_configured():
+        try:
+            rows = sheet_rows(SHEET_MESAS, MESAS_COLUMNS)
+            if rows:
+                return rows
+        except Exception as e:
+            st.warning(f"Falha ao ler Mesas no Google Sheets. Usando arquivo local. Detalhe: {e}")
     return read_csv_rows(MESAS_PATH, MESAS_COLUMNS)
 
 
 def load_mesas():
     total = get_total_tables()
-    rows = read_csv_rows(MESAS_PATH, MESAS_COLUMNS)
+    rows = load_all_mesas()
     active = []
     for row in rows:
         try:
@@ -553,14 +932,29 @@ def load_mesas():
 
 def save_mesas(rows):
     write_csv_rows(MESAS_PATH, MESAS_COLUMNS, rows)
+    if google_sheets_configured():
+        try:
+            sheet_write_rows(SHEET_MESAS, MESAS_COLUMNS, rows)
+        except Exception as e:
+            st.warning(f"Falha ao salvar Mesas no Google Sheets. Detalhe: {e}")
 
 
 def load_ingressos():
+    if google_sheets_configured():
+        try:
+            return sheet_rows(SHEET_INGRESSOS, INGRESSOS_COLUMNS)
+        except Exception as e:
+            st.warning(f"Falha ao ler Ingressos no Google Sheets. Usando arquivo local. Detalhe: {e}")
     return read_csv_rows(INGRESSOS_PATH, INGRESSOS_COLUMNS)
 
 
 def save_ingressos(rows):
     write_csv_rows(INGRESSOS_PATH, INGRESSOS_COLUMNS, rows)
+    if google_sheets_configured():
+        try:
+            sheet_write_rows(SHEET_INGRESSOS, INGRESSOS_COLUMNS, rows)
+        except Exception as e:
+            st.warning(f"Falha ao salvar Ingressos no Google Sheets. Detalhe: {e}")
 
 
 def refresh_data():
@@ -593,24 +987,42 @@ def status_color(status):
 
 
 def load_table_coordinates():
-    if MAP_COORDS_PATH.exists():
-        coords = json.loads(MAP_COORDS_PATH.read_text(encoding='utf-8'))
-    else:
-        coords = []
+    coords = []
+
+    if google_sheets_configured():
+        try:
+            coords = sheet_coords_load()
+        except Exception as e:
+            st.warning(f"Falha ao ler MapaMesas no Google Sheets. Usando arquivo local. Detalhe: {e}")
+
+    if not coords:
+        if MAP_COORDS_PATH.exists():
+            coords = json.loads(MAP_COORDS_PATH.read_text(encoding='utf-8'))
+        else:
+            coords = []
 
     total = get_total_tables() if 'get_total_tables' in globals() else 100
     existentes = {int(c.get('mesa', 0)) for c in coords if str(c.get('mesa', '')).isdigit()}
     if len(existentes) < total:
-        # cria coordenadas extras simples caso o Adm aumente acima das coordenadas existentes
         start_x, start_y = 900, 400
         step_x, step_y = 90, 90
         for n in range(1, total + 1):
             if n not in existentes:
                 idx = n - 1
                 coords.append({'mesa': n, 'x': start_x + (idx % 10) * step_x, 'y': start_y + (idx // 10) * step_y})
-        MAP_COORDS_PATH.write_text(json.dumps(coords, ensure_ascii=False, indent=2), encoding='utf-8')
+        save_table_coordinates(coords)
+
     return coords
 
+
+def save_table_coordinates(coords):
+    MAP_COORDS_PATH.parent.mkdir(exist_ok=True)
+    save_table_coordinates(coords)
+    if google_sheets_configured():
+        try:
+            sheet_coords_save(coords)
+        except Exception as e:
+            st.warning(f"Falha ao salvar MapaMesas no Google Sheets. Detalhe: {e}")
 
 
 def table_colors(status):
@@ -901,7 +1313,7 @@ def reset_table_coordinates():
             coords.append({"mesa": mesa, "x": int(x), "y": int(y)})
             mesa += 1
 
-    MAP_COORDS_PATH.write_text(json.dumps(coords, ensure_ascii=False, indent=2), encoding="utf-8")
+    save_table_coordinates(coords)
 
 
 def page_dashboard():
@@ -1250,7 +1662,8 @@ def save_canvas_positions(canvas_json, scale_x, scale_y):
                 moved += 1
 
     coords_final = sorted(coords_by_num.values(), key=lambda x: int(x["mesa"]))
-    MAP_COORDS_PATH.write_text(json.dumps(coords_final, ensure_ascii=False, indent=2), encoding="utf-8")
+    save_table_coordinates(coords_final)
+    st.session_state["mesa_coords_last_saved"] = now_str() if "now_str" in globals() else ""
     return moved
 
 
@@ -1263,7 +1676,7 @@ def move_selected_tables(mesa_nums, dx=0, dy=0):
             item["x"] = int(item["x"]) + int(dx)
             item["y"] = int(item["y"]) + int(dy)
             moved += 1
-    MAP_COORDS_PATH.write_text(json.dumps(coords, ensure_ascii=False, indent=2), encoding="utf-8")
+    save_table_coordinates(coords)
     return moved
 
 
@@ -1301,7 +1714,7 @@ def apply_grid_layout_to_tables(table_nums, start_x, start_y, columns, spacing_x
             moved += 1
 
     coords_sorted = sorted(by_num.values(), key=lambda x: int(x["mesa"]))
-    MAP_COORDS_PATH.write_text(json.dumps(coords_sorted, ensure_ascii=False, indent=2), encoding="utf-8")
+    save_table_coordinates(coords_sorted)
     return moved
 
 
@@ -1331,7 +1744,7 @@ def move_tables_to_anchor(table_nums, anchor_x, anchor_y):
         moved += 1
 
     coords_sorted = sorted(by_num.values(), key=lambda x: int(x["mesa"]))
-    MAP_COORDS_PATH.write_text(json.dumps(coords_sorted, ensure_ascii=False, indent=2), encoding="utf-8")
+    save_table_coordinates(coords_sorted)
     return moved
 
 
@@ -1529,6 +1942,21 @@ def page_master():
                 "Cor principal dos botões",
                 value=cfg.get("primary_color", "#2f6bff")
             )
+
+        st.markdown("### Fonte e legibilidade")
+        f1, f2, f3 = st.columns(3)
+        with f1:
+            cfg["base_font_size"] = st.slider("Tamanho da fonte no PC", 12, 24, int(cfg.get("base_font_size", 16)))
+            cfg["mobile_font_size"] = st.slider("Tamanho da fonte no celular", 14, 28, int(cfg.get("mobile_font_size", 18)))
+            cfg["font_weight"] = st.slider("Negrito da fonte", 300, 950, int(cfg.get("font_weight", 700)), step=50)
+        with f2:
+            cfg["text_color"] = st.color_picker("Cor do texto principal", value=cfg.get("text_color", "#ffffff"))
+            cfg["muted_text_color"] = st.color_picker("Cor do texto secundário", value=cfg.get("muted_text_color", "#dbe7ff"))
+            cfg["text_shadow_strength"] = st.slider("Sombra do texto", 0, 100, int(cfg.get("text_shadow_strength", 45)))
+        with f3:
+            cfg["panel_bg_opacity"] = st.slider("Fundo das janelas/cards (%)", 20, 98, int(cfg.get("panel_bg_opacity", 86)))
+            cfg["input_bg_color"] = st.color_picker("Fundo dos campos", value=cfg.get("input_bg_color", "#ffffff"))
+            cfg["input_text_color"] = st.color_picker("Texto dos campos", value=cfg.get("input_text_color", "#111827"))
 
         if st.button("Salvar aparência", use_container_width=True):
             save_config(cfg)
@@ -1801,7 +2229,7 @@ def page_master():
                         i["x"] = int(novo_x)
                         i["y"] = int(novo_y)
                         break
-                MAP_COORDS_PATH.write_text(json.dumps(coords, ensure_ascii=False, indent=2), encoding="utf-8")
+                save_table_coordinates(coords)
                 st.rerun()
 
             with st.expander("Edição manual por X e Y"):
@@ -1813,7 +2241,7 @@ def page_master():
                             i["x"] = int(x)
                             i["y"] = int(y)
                             break
-                    MAP_COORDS_PATH.write_text(json.dumps(coords, ensure_ascii=False, indent=2), encoding="utf-8")
+                    save_table_coordinates(coords)
                     st.success(f"Mesa {mesa_sel} salva em X={int(x)} / Y={int(y)}.")
                     st.rerun()
 
@@ -1823,6 +2251,25 @@ def page_master():
 
 
     with aba6:
+        st.markdown("### Banco de dados atual")
+        if using_google_sheets():
+            st.success("Banco principal conectado ao Google Sheets/Drive. As vendas, usuários, configurações e mapa das mesas estão sendo salvos na planilha.")
+        else:
+            st.warning(
+                "Google Sheets ainda não configurado. O sistema está usando arquivos locais: "
+                "data/mesas.csv, data/ingressos.csv, data/users.json, data/config.json e assets/mesa_coords.json. "
+                "No Streamlit Cloud, esses arquivos podem voltar ao estado do GitHub após Reboot/redeploy."
+            )
+        db1, db2, db3, db4 = st.columns(4)
+        if MESAS_PATH.exists():
+            db1.download_button("Baixar mesas.csv", MESAS_PATH.read_bytes(), "mesas.csv", "text/csv", use_container_width=True)
+        if INGRESSOS_PATH.exists():
+            db2.download_button("Baixar ingressos.csv", INGRESSOS_PATH.read_bytes(), "ingressos.csv", "text/csv", use_container_width=True)
+        if USERS_PATH.exists():
+            db3.download_button("Baixar users.json", USERS_PATH.read_bytes(), "users.json", "application/json", use_container_width=True)
+        if CONFIG_PATH.exists():
+            db4.download_button("Baixar config.json", CONFIG_PATH.read_bytes(), "config.json", "application/json", use_container_width=True)
+
         st.markdown("### Usuários do sistema")
         auth = load_auth_data()
         usuarios = auth.get("users", {})

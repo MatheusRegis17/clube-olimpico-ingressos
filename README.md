@@ -246,3 +246,43 @@ Recursos:
 - diminuir/aumentar a quantidade de mesas ativas;
 - mesas acima do limite ficam ocultas, mas os dados não são apagados;
 - baixar `users.json` e `config.json` para persistir alterações no GitHub.
+
+
+## Atualização: fonte, leitura no celular e banco de dados
+
+- Painel Master > Aparência agora permite ajustar:
+  - tamanho da fonte no PC;
+  - tamanho da fonte no celular;
+  - negrito;
+  - cor do texto principal;
+  - cor do texto secundário;
+  - sombra do texto;
+  - opacidade do fundo das janelas/cards;
+  - cor dos campos.
+- Painel Master > Usuários e mesas agora mostra onde estão os arquivos do banco atual.
+- Foram adicionados botões para baixar `mesas.csv`, `ingressos.csv`, `users.json`, `config.json` e `mesa_coords.json`.
+- As posições do editor visual devem ser baixadas em `mesa_coords.json` e substituídas em `assets/mesa_coords.json` no GitHub para persistir após reboot/redeploy.
+
+
+## Banco de dados no Google Sheets / Drive
+
+Esta versão salva os dados no Google Sheets quando as credenciais estiverem configuradas no Streamlit Secrets.
+
+Abas usadas na planilha:
+- Mesas
+- Ingressos
+- Usuarios
+- Configuracoes
+- MapaMesas
+
+Se o Google Sheets não estiver configurado, o app usa os arquivos locais como fallback.
+
+### Secrets necessários no Streamlit
+
+Use o modelo em `.streamlit/secrets.example.toml`.
+
+Campos principais:
+- `GOOGLE_SHEET_ID`
+- `[google_service_account]` com o JSON da conta de serviço do Google Cloud
+
+A planilha precisa ser compartilhada com o e-mail `client_email` da service account.
