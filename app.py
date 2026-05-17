@@ -98,18 +98,61 @@ def using_google_sheets():
 
 
 def get_or_create_worksheet(title, headers):
+    """
+    Busca a aba pelo nome. Se ela não existir, cria.
+
+    Correção:
+    Em alguns casos o Google Sheets retorna erro no add_worksheet dizendo que a aba
+    já existe, mesmo depois de worksheet(title) falhar. Por isso primeiro varremos
+    a lista de worksheets e, se add_worksheet falhar por "already exists",
+    recarregamos a lista e tentamos encontrar a aba novamente.
+    """
     sh = get_google_spreadsheet()
     if sh is None:
         return None
-    try:
-        ws = sh.worksheet(title)
-    except Exception:
-        ws = sh.add_worksheet(title=title, rows=300, cols=max(10, len(headers) + 2))
 
-    existing = ws.row_values(1)
-    if existing[:len(headers)] != headers:
-        ws.clear()
-        ws.update([headers])
+    def find_existing():
+        try:
+            for worksheet in sh.worksheets():
+                if worksheet.title.strip().lower() == title.strip().lower():
+                    return worksheet
+        except Exception:
+            pass
+        return None
+
+    ws = find_existing()
+
+    if ws is None:
+        try:
+            ws = sh.worksheet(title)
+        except Exception:
+            ws = None
+
+    if ws is None:
+        try:
+            ws = sh.add_worksheet(title=title, rows=300, cols=max(10, len(headers) + 2))
+        except Exception as e:
+            # Caso clássico do erro: "A sheet with the name X already exists"
+            ws = find_existing()
+            if ws is None:
+                try:
+                    ws = sh.worksheet(title)
+                except Exception:
+                    raise e
+
+    # Garante cabeçalho sem apagar dados quando já existe conteúdo válido.
+    try:
+        existing = ws.row_values(1)
+    except Exception:
+        existing = []
+
+    if not existing:
+        ws.update("A1", [headers])
+    elif existing[:len(headers)] != headers:
+        # Se a aba foi criada manualmente ou ficou com cabeçalho ruim,
+        # só substituímos a primeira linha. Não limpamos a aba inteira.
+        ws.update("A1", [headers])
+
     return ws
 
 

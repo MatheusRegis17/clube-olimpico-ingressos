@@ -286,3 +286,14 @@ Campos principais:
 - `[google_service_account]` com o JSON da conta de serviço do Google Cloud
 
 A planilha precisa ser compartilhada com o e-mail `client_email` da service account.
+
+
+## Correção: abas já existentes no Google Sheets
+
+Corrigido o erro:
+`A sheet with the name "Mesas" already exists`.
+
+Agora o sistema:
+- procura a aba existente antes de tentar criar;
+- se o Google retornar erro dizendo que já existe, recarrega as abas e usa a existente;
+- atualiza somente o cabeçalho da primeira linha, sem limpar a aba inteira.
