@@ -1615,7 +1615,11 @@ def sidebar():
         st.markdown('<div class="event-card">', unsafe_allow_html=True)
         st.markdown('## 🎪 Festa Junina 2026')
         show_image(LOGO_ARRAIA_PATH, width=120)
-        st.markdown('📅 **04/07/2026**  \n📍 **Quadra do Clube**  \n🪑 **Mesa:** R$ 40,00  \n🎫 **Ingresso:** R$ 10,00')
+        st.markdown(
+            '📅 **04/07/2026**  \n📍 **Quadra do Clube**  '
+            f'\n🪑 **Mesa:** {formatar_moeda(get_valor_mesa())}  '
+            f'\n🎫 **Ingresso:** {formatar_moeda(VALOR_INGRESSO)}'
+        )
         st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('**Usuário:** ' + str(st.session_state.current_user))
         if st.button('Sair', use_container_width=True):
