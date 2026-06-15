@@ -2737,7 +2737,8 @@ def page_master():
         valor_atual = get_valor_mesa()
         st.info(
             f"Valor atual da mesa: **{formatar_moeda(valor_atual)}**. "
-            "Alterar aqui afeta apenas as próximas vendas; mesas já vendidas mantêm o valor registrado."
+            "Ao salvar, o novo valor é aplicado a **todas as mesas** "
+            "(inclusive as já vendidas e reservadas)."
         )
         novo_valor = st.number_input(
             "Valor da mesa (R$)",
@@ -2750,8 +2751,14 @@ def page_master():
         if st.button("Salvar valor da mesa", use_container_width=True, key="salvar_valor_mesa"):
             cfg_valor["valor_mesa"] = float(novo_valor)
             save_config(cfg_valor)
+            todas_valor = load_all_mesas()
+            for _m in todas_valor:
+                _m["valor"] = str(float(novo_valor))
+            save_mesas(todas_valor)
             refresh_data()
-            st.success(f"Valor da mesa atualizado para {formatar_moeda(float(novo_valor))}.")
+            st.success(
+                f"Valor de todas as mesas atualizado para {formatar_moeda(float(novo_valor))}."
+            )
             st.rerun()
 
         st.markdown("---")
