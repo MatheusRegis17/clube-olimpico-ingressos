@@ -35,7 +35,7 @@ LOGO_ARRAIA_PATH = ASSETS_DIR / "logo_arraia.png"
 BACKGROUND_PATH = ASSETS_DIR / "background_festa_junina.png"
 CONFIG_PATH = DATA_DIR / "config.json"
 
-VALOR_MESA = 40.0
+VALOR_MESA = 50.0
 VALOR_INGRESSO = 10.0
 SENHA_GRATUIDADE = "Cata1010#"
 USUARIOS_PADRAO = ["Secretaria Lucas", "Secretaria Juliana", "Adm", "Carla Curi"]
@@ -359,6 +359,7 @@ def default_config():
         "map_table_radius": 22,
         "map_zoom": 100,
         "total_tables": 100,
+        "valor_mesa": 50.0,
         "base_font_size": 16,
         "mobile_font_size": 18,
         "font_weight": 700,
@@ -1079,7 +1080,7 @@ def init_files():
     if not MESAS_PATH.exists():
         mesas = []
         for i in range(1, 101):
-            mesas.append({'mesa': str(i), 'status': 'Disponível', 'comprador': '', 'telefone': '', 'vendedor': '', 'pagamento': '', 'valor': str(VALOR_MESA), 'data_hora': '', 'observacao': ''})
+            mesas.append({'mesa': str(i), 'status': 'Disponível', 'comprador': '', 'telefone': '', 'vendedor': '', 'pagamento': '', 'valor': str(get_valor_mesa()), 'data_hora': '', 'observacao': ''})
         write_csv_rows(MESAS_PATH, MESAS_COLUMNS, mesas)
     if not INGRESSOS_PATH.exists():
         write_csv_rows(INGRESSOS_PATH, INGRESSOS_COLUMNS, [])
@@ -1094,6 +1095,23 @@ def get_total_tables():
         return max(1, min(200, int(cfg.get('total_tables', 100))))
     except Exception:
         return 100
+
+
+def get_valor_mesa():
+    """Valor atual da mesa (configurável pelo administrador no Painel Master)."""
+    cfg = load_config()
+    try:
+        return max(0.0, float(cfg.get('valor_mesa', VALOR_MESA)))
+    except Exception:
+        return VALOR_MESA
+
+
+def status_mesa_atual(mesa_numero):
+    """Retorna o status atual de uma mesa pelo número (ex.: 'Vendida')."""
+    for m in st.session_state.get('mesas', []):
+        if str(m.get('mesa')) == str(mesa_numero):
+            return m.get('status', 'Disponível')
+    return 'Disponível'
 
 
 def load_all_mesas():
@@ -1313,7 +1331,7 @@ def salvar_mesa(payload, gratuidade=False):
         if mesa['mesa'] == str(payload['mesa_numero']):
             status_final = payload['status']
             pagamento_final = payload['pagamento']
-            valor_final = VALOR_MESA
+            valor_final = get_valor_mesa()
 
             if gratuidade:
                 status_final = 'Gratuidade'
@@ -1697,7 +1715,11 @@ def page_mesas():
     with st.form('form_mesa'):
         c1,c2,c3 = st.columns(3)
         with c1:
-            mesa_numero = st.selectbox('Número da mesa', [m['mesa'] for m in mesas])
+            mesa_numero = st.selectbox(
+                'Número da mesa',
+                [m['mesa'] for m in mesas],
+                format_func=lambda x: f"Mesa {x} — {status_mesa_atual(x)}"
+            )
             comprador = st.text_input('Nome do comprador')
         with c2:
             telefone = st.text_input('Telefone / WhatsApp')
@@ -1709,6 +1731,13 @@ def page_mesas():
         gratuidade = st.checkbox('Gratuidade do presidente')
         salvar = st.form_submit_button('Salvar mesa')
     if salvar:
+        status_atual = status_mesa_atual(mesa_numero)
+        if status_atual in ['Vendida', 'Reservada', 'Gratuidade'] and not is_admin_user():
+            st.error(
+                f"A mesa {mesa_numero} está **{status_atual}** e só pode ser alterada pelo administrador. "
+                "Escolha uma mesa disponível."
+            )
+            st.stop()
         payload = {'mesa_numero': mesa_numero, 'comprador': comprador, 'telefone': telefone, 'vendedor': vendedor, 'status': status, 'pagamento': pagamento, 'observacao': observacao}
         if gratuidade:
             st.session_state.pending_mesa = payload
@@ -2703,6 +2732,29 @@ def page_master():
         )
 
         st.markdown("---")
+        st.markdown("### Valor da mesa")
+        cfg_valor = load_config()
+        valor_atual = get_valor_mesa()
+        st.info(
+            f"Valor atual da mesa: **{formatar_moeda(valor_atual)}**. "
+            "Alterar aqui afeta apenas as próximas vendas; mesas já vendidas mantêm o valor registrado."
+        )
+        novo_valor = st.number_input(
+            "Valor da mesa (R$)",
+            min_value=0.0,
+            value=float(valor_atual),
+            step=5.0,
+            format="%.2f",
+            key="config_valor_mesa"
+        )
+        if st.button("Salvar valor da mesa", use_container_width=True, key="salvar_valor_mesa"):
+            cfg_valor["valor_mesa"] = float(novo_valor)
+            save_config(cfg_valor)
+            refresh_data()
+            st.success(f"Valor da mesa atualizado para {formatar_moeda(float(novo_valor))}.")
+            st.rerun()
+
+        st.markdown("---")
         st.markdown("### Quantidade de mesas ativas")
         cfg = load_config()
         total_atual = get_total_tables()
@@ -2751,7 +2803,7 @@ def page_master():
                         'telefone': '',
                         'vendedor': '',
                         'pagamento': '',
-                        'valor': str(VALOR_MESA),
+                        'valor': str(get_valor_mesa()),
                         'data_hora': '',
                         'observacao': ''
                     })
